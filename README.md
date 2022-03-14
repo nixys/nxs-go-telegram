@@ -98,4 +98,318 @@ This handler is called when session has not been started yet. The main goal for 
 
 ## Example of usage
 
-Coming soon ...
+You can find the example of very simple bot below. Bot asks to user several simple questions and sends summary.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	tg "github.com/nixys/nxs-go-telegram"
+)
+
+func main() {
+
+	// Example of user context used within the bot handlers
+	botCompany := "Nixys"
+
+	// Bot description
+	botDescription := tg.Description{
+		Commands: map[string]tg.CommandMeta{
+			"sayhello": {
+				Description: "Bot says you hello and begins a conversation",
+				Handler:     sayHelloCmd,
+			},
+			"destroy": {
+				Description: "Destroy current session",
+				Handler:     destroyCmd,
+			},
+		},
+		InitHandler: botInit,
+		States: map[tg.SessionState]tg.State{
+			tg.SessState("hello"): {
+				StateHandler: helloState,
+			},
+			tg.SessState("name"): {
+				StateHandler:   nameState,
+				MessageHandler: nameMsg,
+			},
+			tg.SessState("gender"): {
+				StateHandler:    genderState,
+				CallbackHandler: genderCallback,
+			},
+			tg.SessState("age"): {
+				StateHandler:   ageState,
+				MessageHandler: ageMsg,
+			},
+			tg.SessState("info"): {
+				StateHandler: infoState,
+			},
+			tg.SessState("bye"): {
+				StateHandler: byeState,
+			},
+		},
+	}
+
+	// Setup the bot
+	bot, err := tg.Setup(tg.Settings{
+		BotSettings: tg.SettingsBot{
+			BotAPI: os.Getenv("BOT_API_TOKEN"),
+		},
+		RedisHost: os.Getenv("REDIS_HOST"),
+	}, botDescription, botCompany)
+	if err != nil {
+		fmt.Println("bot setup error:", err)
+		return
+	}
+
+	// Runtime the bot
+	runtime(bot)
+}
+
+func runtime(bot tg.Telegram) {
+
+  fmt.Println("bot started")
+
+	// Updates runtime
+	ctxUpdates, cfUpdates := context.WithCancel(context.Background())
+	chUpdates := make(chan error)
+
+	// Queue runtime
+	ctxQueue, cfQueue := context.WithCancel(context.Background())
+	chQueue := make(chan error)
+
+	// Defer call cancel functions
+	defer cfUpdates()
+	defer cfQueue()
+
+	go runtimeBotUpdates(ctxUpdates, bot, chUpdates)
+	go runtimeBotQueue(ctxQueue, bot, chQueue)
+
+	for {
+		select {
+		case e := <-chUpdates:
+			fmt.Println("got error from runtime update:", e)
+			return
+		case e := <-chQueue:
+			fmt.Println("got error from runtime queue:", e)
+			return
+		}
+	}
+}
+
+// runtimeBotUpdates checks updates at Telegram and put it into queue
+func runtimeBotUpdates(ctx context.Context, bot tg.Telegram, ch chan error) {
+	if err := bot.GetUpdates(ctx); err != nil {
+		if err == tg.ErrUpdatesChanClosed {
+			ch <- nil
+		} else {
+			ch <- err
+		}
+	} else {
+		ch <- nil
+	}
+}
+
+// runtimeBotQueue processes an updaates from queue
+func runtimeBotQueue(ctx context.Context, bot tg.Telegram, ch chan error) {
+	timer := time.NewTimer(time.Duration(1) * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			if err := bot.Processing(); err != nil {
+				ch <- err
+			}
+			timer.Reset(time.Duration(1) * time.Second)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// botInit represents InitHandler for bot
+func botInit(t *tg.Telegram, uc tg.UpdateChain) (tg.InitHandlerRes, error) {
+	return tg.InitHandlerRes{
+		NextState: tg.SessState("name"),
+	}, nil
+}
+
+// sayHelloCmd handles a `/sayhello` command
+func sayHelloCmd(t *tg.Telegram, uc tg.UpdateChain, cmd string, args string) (tg.CommandHandlerRes, error) {
+	return tg.CommandHandlerRes{
+		NextState: tg.SessState("hello"),
+	}, nil
+}
+
+// destroyCmd handles a `/destroy` command
+func destroyCmd(t *tg.Telegram, uc tg.UpdateChain, cmd string, args string) (tg.CommandHandlerRes, error) {
+	return tg.CommandHandlerRes{
+		NextState: tg.SessState("bye"),
+	}, nil
+}
+
+// Hello
+
+// helloState represents StateHandler for `hello` state
+func helloState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+	c := t.UsrCtxGet().(string)
+	return tg.StateHandlerRes{
+		Message:   "Hello! I'm a bot created by " + c + " developers",
+		NextState: tg.SessState("name"),
+	}, nil
+}
+
+// Name
+
+// nameState represents StateHandler for `name` state
+func nameState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+	return tg.StateHandlerRes{
+		Message: "Please, enter your name",
+	}, nil
+}
+
+// nameMsg represents MessageHandler for `name` state
+func nameMsg(t *tg.Telegram, uc tg.UpdateChain) (tg.MessageHandlerRes, error) {
+
+	m := uc.MessageTextGet()
+	if len(m) == 0 {
+		return tg.MessageHandlerRes{}, fmt.Errorf("empty message")
+	}
+
+	if err := t.SlotSave("name", m[0]); err != nil {
+		return tg.MessageHandlerRes{}, err
+	}
+
+	return tg.MessageHandlerRes{
+		NextState: tg.SessState("gender"),
+	}, nil
+}
+
+// Gender
+
+// genderState represents StateHandler for `gender` state
+func genderState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+	return tg.StateHandlerRes{
+		Message: "Select your gender",
+		Buttons: [][]tg.Button{
+			{
+				{
+					Text:       "Male",
+					Identifier: "male",
+				},
+			},
+			{
+				{
+					Text:       "Female",
+					Identifier: "female",
+				},
+			},
+		},
+		NextState: tg.SessStateBreak(),
+	}, nil
+}
+
+// genderCallback represents CallbackHandler for `gender` state
+func genderCallback(t *tg.Telegram, uc tg.UpdateChain, identifier string) (tg.CallbackHandlerRes, error) {
+	switch identifier {
+	case "male":
+		if err := t.SlotSave("gender", "Male"); err != nil {
+			return tg.CallbackHandlerRes{}, err
+		}
+	case "female":
+		if err := t.SlotSave("gender", "Female"); err != nil {
+			return tg.CallbackHandlerRes{}, err
+		}
+	}
+	return tg.CallbackHandlerRes{
+		NextState: tg.SessState("age"),
+	}, nil
+}
+
+// Age
+
+// ageState represents StateHandler for `age` state
+func ageState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+	return tg.StateHandlerRes{
+		Message:      "How old are you?",
+		StickMessage: true,
+	}, nil
+}
+
+// ageMsg represents MessageHandler for `age` state
+func ageMsg(t *tg.Telegram, uc tg.UpdateChain) (tg.MessageHandlerRes, error) {
+
+	m := uc.MessageTextGet()
+	if len(m) == 0 {
+		return tg.MessageHandlerRes{}, fmt.Errorf("empty message")
+	}
+
+	if err := t.SlotSave("age", m[0]); err != nil {
+		return tg.MessageHandlerRes{}, err
+	}
+
+	return tg.MessageHandlerRes{
+		NextState: tg.SessState("info"),
+	}, nil
+}
+
+// Info
+
+// infoState represents StateHandler for `info` state
+func infoState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+
+	n, _, err := t.SlotGet("name")
+	if err != nil {
+		return tg.StateHandlerRes{}, err
+	}
+
+	g, _, err := t.SlotGet("gender")
+	if err != nil {
+		return tg.StateHandlerRes{}, err
+	}
+
+	a, _, err := t.SlotGet("age")
+	if err != nil {
+		return tg.StateHandlerRes{}, err
+	}
+
+	name := n.(string)
+	gender := g.(string)
+	age := a.(string)
+
+	m := fmt.Sprintf("Info:\n"+
+		"  Name: %s\n"+
+		"  Gender: %s\n"+
+		"  Age: %s",
+		name,
+		gender,
+		age)
+
+	return tg.StateHandlerRes{
+		Message:   m,
+		NextState: tg.SessState("bye"),
+	}, nil
+}
+
+// Bye
+
+// byeState represents StateHandler for `bye` state
+func byeState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+	return tg.StateHandlerRes{
+		Message:   "Bye!",
+		NextState: tg.SessStateDestroy(),
+	}, nil
+}
+```
+
+Run:
+
+```
+go mod init test
+go mod tidy
+BOT_API_TOKEN="YOUR_BOT_API_TOKEN" REDIS_HOST="YOUR_REDIS_HOST_AND_PORT" go run main.go
+```
