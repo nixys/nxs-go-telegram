@@ -173,7 +173,7 @@ func main() {
 
 func runtime(bot tg.Telegram) {
 
-  fmt.Println("bot started")
+	fmt.Println("bot started")
 
 	// Updates runtime
 	ctxUpdates, cfUpdates := context.WithCancel(context.Background())
@@ -232,21 +232,21 @@ func runtimeBotQueue(ctx context.Context, bot tg.Telegram, ch chan error) {
 }
 
 // botInit represents InitHandler for bot
-func botInit(t *tg.Telegram, uc tg.UpdateChain) (tg.InitHandlerRes, error) {
+func botInit(t *tg.Telegram, s *tg.Session) (tg.InitHandlerRes, error) {
 	return tg.InitHandlerRes{
 		NextState: tg.SessState("name"),
 	}, nil
 }
 
 // sayHelloCmd handles a `/sayhello` command
-func sayHelloCmd(t *tg.Telegram, uc tg.UpdateChain, cmd string, args string) (tg.CommandHandlerRes, error) {
+func sayHelloCmd(t *tg.Telegram, s *tg.Session, cmd string, args string) (tg.CommandHandlerRes, error) {
 	return tg.CommandHandlerRes{
 		NextState: tg.SessState("hello"),
 	}, nil
 }
 
 // destroyCmd handles a `/destroy` command
-func destroyCmd(t *tg.Telegram, uc tg.UpdateChain, cmd string, args string) (tg.CommandHandlerRes, error) {
+func destroyCmd(t *tg.Telegram, s *tg.Session, cmd string, args string) (tg.CommandHandlerRes, error) {
 	return tg.CommandHandlerRes{
 		NextState: tg.SessState("bye"),
 	}, nil
@@ -255,7 +255,7 @@ func destroyCmd(t *tg.Telegram, uc tg.UpdateChain, cmd string, args string) (tg.
 // Hello
 
 // helloState represents StateHandler for `hello` state
-func helloState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+func helloState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 	c := t.UsrCtxGet().(string)
 	return tg.StateHandlerRes{
 		Message:   "Hello! I'm a bot created by " + c + " developers",
@@ -266,21 +266,21 @@ func helloState(t *tg.Telegram) (tg.StateHandlerRes, error) {
 // Name
 
 // nameState represents StateHandler for `name` state
-func nameState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+func nameState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 	return tg.StateHandlerRes{
 		Message: "Please, enter your name",
 	}, nil
 }
 
 // nameMsg represents MessageHandler for `name` state
-func nameMsg(t *tg.Telegram, uc tg.UpdateChain) (tg.MessageHandlerRes, error) {
+func nameMsg(t *tg.Telegram, s *tg.Session) (tg.MessageHandlerRes, error) {
 
-	m := uc.MessageTextGet()
+	m := s.UpdateChain().MessageTextGet()
 	if len(m) == 0 {
 		return tg.MessageHandlerRes{}, fmt.Errorf("empty message")
 	}
 
-	if err := t.SlotSave("name", m[0]); err != nil {
+	if err := s.SlotSave("name", m[0]); err != nil {
 		return tg.MessageHandlerRes{}, err
 	}
 
@@ -292,7 +292,7 @@ func nameMsg(t *tg.Telegram, uc tg.UpdateChain) (tg.MessageHandlerRes, error) {
 // Gender
 
 // genderState represents StateHandler for `gender` state
-func genderState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+func genderState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 	return tg.StateHandlerRes{
 		Message: "Select your gender",
 		Buttons: [][]tg.Button{
@@ -314,14 +314,14 @@ func genderState(t *tg.Telegram) (tg.StateHandlerRes, error) {
 }
 
 // genderCallback represents CallbackHandler for `gender` state
-func genderCallback(t *tg.Telegram, uc tg.UpdateChain, identifier string) (tg.CallbackHandlerRes, error) {
+func genderCallback(t *tg.Telegram, s *tg.Session, identifier string) (tg.CallbackHandlerRes, error) {
 	switch identifier {
 	case "male":
-		if err := t.SlotSave("gender", "Male"); err != nil {
+		if err := s.SlotSave("gender", "Male"); err != nil {
 			return tg.CallbackHandlerRes{}, err
 		}
 	case "female":
-		if err := t.SlotSave("gender", "Female"); err != nil {
+		if err := s.SlotSave("gender", "Female"); err != nil {
 			return tg.CallbackHandlerRes{}, err
 		}
 	}
@@ -333,7 +333,7 @@ func genderCallback(t *tg.Telegram, uc tg.UpdateChain, identifier string) (tg.Ca
 // Age
 
 // ageState represents StateHandler for `age` state
-func ageState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+func ageState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 	return tg.StateHandlerRes{
 		Message:      "How old are you?",
 		StickMessage: true,
@@ -341,14 +341,14 @@ func ageState(t *tg.Telegram) (tg.StateHandlerRes, error) {
 }
 
 // ageMsg represents MessageHandler for `age` state
-func ageMsg(t *tg.Telegram, uc tg.UpdateChain) (tg.MessageHandlerRes, error) {
+func ageMsg(t *tg.Telegram, s *tg.Session) (tg.MessageHandlerRes, error) {
 
-	m := uc.MessageTextGet()
+	m := s.UpdateChain().MessageTextGet()
 	if len(m) == 0 {
 		return tg.MessageHandlerRes{}, fmt.Errorf("empty message")
 	}
 
-	if err := t.SlotSave("age", m[0]); err != nil {
+	if err := s.SlotSave("age", m[0]); err != nil {
 		return tg.MessageHandlerRes{}, err
 	}
 
@@ -360,19 +360,19 @@ func ageMsg(t *tg.Telegram, uc tg.UpdateChain) (tg.MessageHandlerRes, error) {
 // Info
 
 // infoState represents StateHandler for `info` state
-func infoState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+func infoState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 
-	n, _, err := t.SlotGet("name")
+	n, _, err := s.SlotGet("name")
 	if err != nil {
 		return tg.StateHandlerRes{}, err
 	}
 
-	g, _, err := t.SlotGet("gender")
+	g, _, err := s.SlotGet("gender")
 	if err != nil {
 		return tg.StateHandlerRes{}, err
 	}
 
-	a, _, err := t.SlotGet("age")
+	a, _, err := s.SlotGet("age")
 	if err != nil {
 		return tg.StateHandlerRes{}, err
 	}
@@ -398,7 +398,7 @@ func infoState(t *tg.Telegram) (tg.StateHandlerRes, error) {
 // Bye
 
 // byeState represents StateHandler for `bye` state
-func byeState(t *tg.Telegram) (tg.StateHandlerRes, error) {
+func byeState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 	return tg.StateHandlerRes{
 		Message:   "Bye!",
 		NextState: tg.SessStateDestroy(),
