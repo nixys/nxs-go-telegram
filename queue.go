@@ -6,8 +6,11 @@ import (
 
 // queue it is a queue context structure
 type queue struct {
-	redis        redis
+	redis        *redis
 	waitInterval time.Duration
+}
+
+type queueChain struct {
 }
 
 // queueInit initiates queue
@@ -28,7 +31,7 @@ func queueInit(host string, waitInterval time.Duration) (queue, error) {
 	return q, nil
 }
 
-func (q *queue) queueClose() error {
+func (q *queue) close() error {
 	return q.redis.close()
 }
 
@@ -53,7 +56,7 @@ func (q *queue) chainGet() (UpdateChain, error) {
 
 	qm, err := q.redis.queueMetasGet()
 	if err != nil {
-		return uc, err
+		return UpdateChain{}, err
 	}
 
 	for _, m := range qm {
@@ -75,11 +78,11 @@ func (q *queue) chainGet() (UpdateChain, error) {
 				return uc, err
 			}
 
-			uc.add(m.chatID, m.userID, u)
+			uc.add(u)
 
 			return uc, nil
 		}
 	}
 
-	return uc, nil
+	return UpdateChain{}, nil
 }

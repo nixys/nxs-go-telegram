@@ -1,6 +1,7 @@
 package tg
 
 import (
+	"encoding/json"
 	"path"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -15,11 +16,12 @@ type UpdateType int
 // UpdateChain contains chain of updates
 type UpdateChain struct {
 	updateType UpdateType
-	chatID     int64
-	userID     int64
-	userName   string
+	updates    []Update
+}
 
-	updates []Update
+type callbackData struct {
+	S string `json:"s"`
+	I string `json:"i"`
 }
 
 const (
@@ -72,20 +74,42 @@ func (uc *UpdateChain) MessageTextGet() []string {
 	return text
 }
 
-// MessagesIDGet gets update ids if chain has message type
-func (uc *UpdateChain) MessagesIDGet() []int64 {
+// MessagesIDsGet gets update ids from updates chain
+func (uc *UpdateChain) MessagesIDsGet() []int {
 
-	var ids []int64
+	var ids []int
 
-	if uc.updateType != UpdateTypeMessage {
-		return ids
-	}
-
-	for _, u := range uc.updates {
-		ids = append(ids, int64(u.Message.MessageID))
+	switch uc.updateType {
+	case UpdateTypeMessage:
+		for _, u := range uc.updates {
+			ids = append(ids, u.Message.MessageID)
+		}
+	case UpdateTypeCallback:
+		for _, u := range uc.updates {
+			ids = append(ids, u.CallbackQuery.Message.MessageID)
+		}
 	}
 
 	return ids
+}
+
+// MessagesIDGet gets update id from first update element from chain
+func (uc *UpdateChain) MessagesIDGet() int {
+
+	if len(uc.updates) == 0 {
+		return 0
+	}
+
+	u := uc.updates[0]
+
+	switch uc.updateType {
+	case UpdateTypeMessage:
+		return u.Message.MessageID
+	case UpdateTypeCallback:
+		return u.CallbackQuery.Message.MessageID
+	}
+
+	return 0
 }
 
 // CallbackQueryIDGet gets callback ID from first update element from chain.
@@ -173,23 +197,8 @@ func (uc *UpdateChain) TypeGet() UpdateType {
 	return uc.updateType
 }
 
-// ChatIDGet gets chain chat ID
-func (uc *UpdateChain) ChatIDGet() int64 {
-	return uc.chatID
-}
-
-// UserIDGet gets chain user ID
-func (uc *UpdateChain) UserIDGet() int64 {
-	return uc.userID
-}
-
-// UserNameGet gets chain user name
-func (uc *UpdateChain) UserNameGet() string {
-	return uc.userName
-}
-
 // add adds new updates into update chain
-func (uc *UpdateChain) add(chatID, userID int64, updates []Update) {
+func (uc *UpdateChain) add(updates []Update) {
 
 	for _, u := range updates {
 
@@ -202,9 +211,6 @@ func (uc *UpdateChain) add(chatID, userID int64, updates []Update) {
 		// If chain has no type yet
 		if uc.updateType == UpdateTypeNone {
 			uc.updateType = t
-			uc.chatID = chatID
-			uc.userID = userID
-			uc.userName = updateUserNameGet(u)
 		}
 
 		// Skip new elements with different type
@@ -212,15 +218,25 @@ func (uc *UpdateChain) add(chatID, userID int64, updates []Update) {
 			continue
 		}
 
-		// Skip new elements with different chatID or userID
-		cID, uID := updateIDsGet(u)
-		if uc.chatID != cID || uc.userID != uID {
-			continue
-		}
-
 		// Add new element into chain
 		uc.updates = append(uc.updates, u)
 	}
+}
+
+func (uc *UpdateChain) callbackSessionStateGet() (SessionState, string, error) {
+
+	var d callbackData
+
+	data := uc.callbackDataGet()
+	if len(data) == 0 {
+		return sessionBreak, "", nil
+	}
+
+	if err := json.Unmarshal([]byte(data), &d); err != nil {
+		return sessionBreak, "", err
+	}
+
+	return SessionState{d.S}, d.I, nil
 }
 
 // callbackDataGet gets callback data from first update element from chain.
@@ -294,4 +310,19 @@ func updateUserNameGet(update Update) string {
 	}
 
 	return ""
+}
+
+func callbackDataGen(state SessionState, identifier string) (string, error) {
+
+	d := callbackData{
+		S: state.state,
+		I: identifier,
+	}
+
+	b, err := json.Marshal(&d)
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
 }

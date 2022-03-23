@@ -3,7 +3,6 @@ package tg
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,13 +19,12 @@ import (
 type MessageSent tgbotapi.Message
 
 // CommandHandler defines command handler type
-type CommandHandler func(t *Telegram, uc UpdateChain, cmd string, args string) (CommandHandlerRes, error)
+type CommandHandler func(t *Telegram, s *Session, cmd string, args string) (CommandHandlerRes, error)
 
 // Telegram it is a module context structure
 type Telegram struct {
 	bot             *tgbotapi.BotAPI
 	description     Description
-	session         session
 	usrCtx          interface{}
 	redisHost       string
 	updateQueueWait time.Duration
@@ -78,7 +76,7 @@ type Description struct {
 	// InitHandler is a handler to processing Telegram updates
 	// when session has not been started yet.
 	// This element returns only next state.
-	InitHandler func(t *Telegram, uc UpdateChain) (InitHandlerRes, error)
+	InitHandler func(t *Telegram, s *Session) (InitHandlerRes, error)
 }
 
 // InitHandlerRes contains data returned by the InitHandler
@@ -141,17 +139,17 @@ type CommandMeta struct {
 type State struct {
 
 	// Handler to processing new bot state.
-	StateHandler func(t *Telegram) (StateHandlerRes, error)
+	StateHandler func(t *Telegram, s *Session) (StateHandlerRes, error)
 
 	// Handler to processing messages received from user
-	MessageHandler func(t *Telegram, uc UpdateChain) (MessageHandlerRes, error)
+	MessageHandler func(t *Telegram, s *Session) (MessageHandlerRes, error)
 
 	// Handler to processing callbacks received from user for specific state of session
-	CallbackHandler func(t *Telegram, uc UpdateChain, identifier string) (CallbackHandlerRes, error)
+	CallbackHandler func(t *Telegram, s *Session, identifier string) (CallbackHandlerRes, error)
 
 	// Handler to processing sent message to telegram.
 	// E.g. useful for get sent messages ID
-	SentHandler func(t *Telegram, messages []MessageSent) error
+	SentHandler func(t *Telegram, s *Session, messages []MessageSent) error
 }
 
 var (
@@ -163,6 +161,9 @@ var (
 
 	// ErrUpdatesChanClosed contains error "updates channel has been closed"
 	ErrUpdatesChanClosed = errors.New("updates channel has been closed")
+
+	// ErrUpdateChainZeroLen contains error "update has zero len"
+	ErrUpdateChainZeroLen = errors.New("update has zero len")
 )
 
 // Button contains buttons data for state
@@ -198,11 +199,6 @@ type FileSend struct {
 	Buttons  [][]Button
 }
 
-type callbackData struct {
-	S string `json:"s"`
-	I string `json:"i"`
-}
-
 // Setup settings up Telegram bot
 func Setup(s Settings, description Description, usrCtx interface{}) (Telegram, error) {
 
@@ -220,11 +216,11 @@ func Setup(s Settings, description Description, usrCtx interface{}) (Telegram, e
 	t.updateQueueWait = s.UpdateQueueWait
 
 	if s.BotSettings.Webhook != nil {
-		if err := t.setWebhook(s.BotSettings.Webhook); err != nil {
+		if err := t.webhookSet(s.BotSettings.Webhook); err != nil {
 			return t, err
 		}
 	} else {
-		if err := t.delWebhook(); err != nil {
+		if err := t.webhookDel(); err != nil {
 			return t, err
 		}
 	}
@@ -245,7 +241,7 @@ func (t *Telegram) Processing() error {
 	if err != nil {
 		return err
 	}
-	defer q.queueClose()
+	defer q.close()
 
 	// Get all available updates from queue
 	uc, err := q.chainGet()
@@ -253,9 +249,17 @@ func (t *Telegram) Processing() error {
 		return err
 	}
 
-	t.session = sessionInit(uc.ChatIDGet(), uc.UserIDGet(), t.redisHost)
+	sess, err := sessionInit(uc, t.redisHost)
+	if err != nil {
+		if err == ErrUpdateChainZeroLen {
+			return nil
+		} else {
+			return err
+		}
+	}
+	defer sess.close()
 
-	return t.stateProcessing(uc)
+	return sess.stateProcessing(t)
 }
 
 // GetUpdates creates to Telegram API and processes a receiving updates
@@ -301,30 +305,9 @@ func (t *Telegram) UpdateAbsorb(update Update) error {
 	if err != nil {
 		return err
 	}
-	defer q.queueClose()
+	defer q.close()
 
 	return q.add(chatID, userID, update)
-}
-
-// UserIDGet gets user ID for current session
-func (t *Telegram) UserIDGet() int64 {
-	return t.session.userID
-}
-
-// SlotSave saves data in specified slot within the session
-func (t *Telegram) SlotSave(slot string, data interface{}) error {
-	return t.session.slotSave(slot, data)
-}
-
-// SlotGet gets data from specified slot within the session.
-// Use `mapstructure.Decode` to get "structure" data type
-func (t *Telegram) SlotGet(slot string) (interface{}, bool, error) {
-	return t.session.slotGet(slot)
-}
-
-// SlotDel deletes specified slot within the session
-func (t *Telegram) SlotDel(slot string) error {
-	return t.session.slotDel(slot)
 }
 
 // UsrCtxGet gets user context
@@ -388,7 +371,7 @@ func (t *Telegram) DownloadFile(file File, dstPath string) error {
 }
 
 // UploadPhotoStream uploads file as photo to Telegram by specified reader
-func (t *Telegram) UploadPhotoStream(file FileSendStream, r io.Reader) (MessageSent, error) {
+func (t *Telegram) UploadPhotoStream(chatID int64, file FileSendStream, r io.Reader) (MessageSent, error) {
 
 	var (
 		bm  [][]tgbotapi.InlineKeyboardButton
@@ -413,7 +396,7 @@ func (t *Telegram) UploadPhotoStream(file FileSendStream, r io.Reader) (MessageS
 	}
 
 	// For other examples see: https://github.com/go-telegram-bot-api/telegram-bot-api/blob/master/bot_test.go
-	msg := tgbotapi.NewPhoto(t.session.chatIDGet(), reader)
+	msg := tgbotapi.NewPhoto(chatID, reader)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 	msg.Caption = file.Caption
 
@@ -427,7 +410,7 @@ func (t *Telegram) UploadPhotoStream(file FileSendStream, r io.Reader) (MessageS
 }
 
 // UploadPhoto uploads file as photo to Telegram
-func (t *Telegram) UploadPhoto(file FileSend) (MessageSent, error) {
+func (t *Telegram) UploadPhoto(chatID int64, file FileSend) (MessageSent, error) {
 
 	f, err := os.Open(file.FilePath)
 	if err != nil {
@@ -440,7 +423,7 @@ func (t *Telegram) UploadPhoto(file FileSend) (MessageSent, error) {
 		return MessageSent{}, err
 	}
 
-	return t.UploadPhotoStream(FileSendStream{
+	return t.UploadPhotoStream(chatID, FileSendStream{
 		FileName: path.Base(file.FilePath),
 		FileSize: stat.Size(),
 		Caption:  file.Caption,
@@ -448,30 +431,8 @@ func (t *Telegram) UploadPhoto(file FileSend) (MessageSent, error) {
 	}, f)
 }
 
-// stateProcessing processes current session state.
-// It's initial point to route processing into appropriate state
-// in accordance with update chain
-func (t *Telegram) stateProcessing(uc UpdateChain) error {
-
-	// Check `update` is a defined command
-	b, err := t.commandProcessing(uc)
-	if b == true {
-		// If command were found
-		return err
-	}
-
-	switch uc.TypeGet() {
-	case UpdateTypeMessage:
-		return t.messageProcessing(uc)
-	case UpdateTypeCallback:
-		return t.callbackProcessing(uc)
-	}
-
-	return nil
-}
-
-// setWebhook sets Telegram webhook
-func (t *Telegram) setWebhook(s *SettingsBotWebhook) error {
+// webhookSet sets Telegram webhook
+func (t *Telegram) webhookSet(s *SettingsBotWebhook) error {
 
 	var (
 		wh  tgbotapi.WebhookConfig
@@ -509,7 +470,7 @@ func (t *Telegram) setWebhook(s *SettingsBotWebhook) error {
 	return nil
 }
 
-func (t *Telegram) delWebhook() error {
+func (t *Telegram) webhookDel() error {
 	if _, err := t.bot.Request(tgbotapi.DeleteWebhookConfig{}); err != nil {
 		return fmt.Errorf("Telegram bot delete webhook error: %v", err)
 	}
@@ -536,168 +497,6 @@ func (t *Telegram) commandsSet() error {
 	return nil
 }
 
-// initProcessing processes session init state
-func (t *Telegram) initProcessing(uc UpdateChain) error {
-
-	if t.description.InitHandler == nil {
-		return nil
-	}
-
-	// Call initHandler
-	r, err := t.description.InitHandler(t, uc)
-	if err != nil {
-		return err
-	}
-
-	return t.stateSwitch(r.NextState, 0)
-}
-
-// commandProcessing lookups and processes command (if described) by message text from Telegram update.
-func (t *Telegram) commandProcessing(uc UpdateChain) (bool, error) {
-
-	// Check update contains command
-	cmd, args := uc.commandCheck()
-	if len(cmd) == 0 {
-		return false, nil
-	}
-
-	// Check specified command defined in bot description
-	s, b := t.description.Commands[cmd]
-	if b == false {
-		return false, nil
-	}
-
-	// Check handler defined for command
-	if s.Handler == nil {
-		return true, nil
-	}
-
-	r, err := s.Handler(t, uc, cmd, args)
-	if err != nil {
-		return true, err
-	}
-
-	return true, t.stateSwitch(r.NextState, 0)
-}
-
-// messageProcessing processes update chain with `message` type
-func (t *Telegram) messageProcessing(uc UpdateChain) error {
-
-	// Get current session
-	state, e, err := t.session.stateGet()
-	if err != nil {
-		return err
-	}
-
-	// If session does not exist
-	if e == false {
-		return t.initProcessing(uc)
-	}
-
-	// Get state description
-	s, b := t.description.States[state]
-	if b == false {
-		return ErrDescriptionStateMissing
-	}
-
-	if s.MessageHandler == nil {
-		return nil
-	}
-
-	r, err := s.MessageHandler(t, uc)
-	if err != nil {
-		return err
-	}
-
-	return t.stateSwitch(r.NextState, 0)
-}
-
-// callbackProcessing processes update chain with `callback` type
-func (t *Telegram) callbackProcessing(uc UpdateChain) error {
-
-	state, identifier, err := callbackDataGet(uc)
-	if err != nil {
-		return err
-	}
-
-	// Get state description
-	s, b := t.description.States[state]
-	if b == false {
-		return ErrDescriptionStateMissing
-	}
-
-	if s.CallbackHandler == nil {
-		return nil
-	}
-
-	r, err := s.CallbackHandler(t, uc, identifier)
-	if err != nil {
-		return err
-	}
-
-	return t.stateSwitch(r.NextState, uc.updates[0].CallbackQuery.Message.MessageID)
-
-}
-
-func (t *Telegram) stateSwitch(newState SessionState, messageID int) error {
-
-	var mID int
-
-	switch newState {
-	case sessionBreak:
-		return nil
-	case sessionDestroy:
-		return t.session.destroy()
-	}
-
-	s, b := t.description.States[newState]
-	if b == false {
-		return ErrDescriptionStateMissing
-	}
-
-	// Put session into new state
-	if err := t.session.stateSet(newState); err != nil {
-		return err
-	}
-
-	if s.StateHandler == nil {
-		// Do nothing if state handler not defined
-		return nil
-	}
-
-	hr, err := s.StateHandler(t)
-	if err != nil {
-		return err
-	}
-
-	if hr.StickMessage == true {
-		mID = messageID
-	}
-
-	// Send message to user if set
-	if len(hr.Message) > 0 {
-
-		msgs, err := t.sendMessage(t.session.chatIDGet(), mID, hr.Message, hr.Buttons, newState)
-		if err != nil {
-			return err
-		}
-
-		if s.SentHandler != nil {
-			if err := s.SentHandler(t, msgs); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Do not switch next state if message handler defined
-	if s.MessageHandler != nil {
-		return nil
-	}
-
-	return t.stateSwitch(hr.NextState, mID)
-
-}
-
 // sendMessage sends specified message to client
 // Messages can be of two types: either new message, or edit existing message (if messageID is set)
 func (t *Telegram) sendMessage(chatID int64, messageID int, message string, buttons [][]Button, state SessionState) ([]MessageSent, error) {
@@ -715,7 +514,7 @@ func (t *Telegram) sendMessage(chatID int64, messageID int, message string, butt
 			var b []tgbotapi.InlineKeyboardButton
 			for _, be := range br {
 
-				d, err := callbackDataSet(state, be.Identifier)
+				d, err := callbackDataGen(state, be.Identifier)
 				if err != nil {
 					return []MessageSent{}, err
 				}
@@ -776,35 +575,4 @@ func botConnect(botAPI string, p *SettingsBotProxy) (*tgbotapi.BotAPI, error) {
 	}
 
 	return nil, fmt.Errorf("unknown proxy type")
-}
-
-func callbackDataGet(uc UpdateChain) (SessionState, string, error) {
-
-	var d callbackData
-
-	data := uc.callbackDataGet()
-	if len(data) == 0 {
-		return sessionBreak, "", nil
-	}
-
-	if err := json.Unmarshal([]byte(data), &d); err != nil {
-		return sessionBreak, "", err
-	}
-
-	return SessionState{d.S}, d.I, nil
-}
-
-func callbackDataSet(state SessionState, identifier string) (string, error) {
-
-	d := callbackData{
-		S: state.state,
-		I: identifier,
-	}
-
-	b, err := json.Marshal(&d)
-	if err != nil {
-		return "", err
-	}
-
-	return string(b), nil
 }

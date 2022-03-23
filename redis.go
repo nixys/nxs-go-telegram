@@ -27,9 +27,9 @@ const (
 )
 
 // connect connects to Redis
-func redisConnect(host string) (redis, error) {
+func redisConnect(host string) (*redis, error) {
 
-	var r redis
+	r := new(redis)
 
 	client := rds.NewClient(&rds.Options{
 		Addr:         host,

@@ -9,10 +9,12 @@ type SessionState struct {
 }
 
 // session it is a session context structure
-type session struct {
-	chatID int64
-	userID int64
-	host   string
+type Session struct {
+	chatID      int64
+	userID      int64
+	userName    string
+	updateChain *UpdateChain
+	redis       *redis
 }
 
 var (
@@ -43,93 +45,62 @@ func SessState(stateName string) SessionState {
 }
 
 // sessionInit initiates session
-func sessionInit(chatID, userID int64, host string) session {
+func sessionInit(uc UpdateChain, redisHost string) (*Session, error) {
 
-	var s session
+	var err error
 
-	s.chatID = chatID
-	s.userID = userID
-	s.host = host
+	// Skip processing zero-len update chain
+	if len(uc.updates) == 0 {
+		return nil, ErrUpdateChainZeroLen
+	}
 
-	return s
+	s := new(Session)
+
+	s.updateChain = &uc
+
+	// Get chat and user IDs from first update from chain
+	s.chatID, s.userID = updateIDsGet(s.updateChain.updates[0])
+
+	// Get user name from first update from chain
+	s.userName = updateUserNameGet(s.updateChain.updates[0])
+
+	s.redis, err = redisConnect(redisHost)
+	if err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
-// chatIDGet gets current session chat ID
-func (s *session) chatIDGet() int64 {
+// close closes Redis connection for session
+func (s *Session) close() error {
+	return s.redis.close()
+}
+
+// ChatIDGet gets current session chat ID
+func (s *Session) ChatIDGet() int64 {
 	return s.chatID
 }
 
-// userIDGet gets current session user ID
-func (s *session) userIDGet() int64 {
+// UserIDGet gets current session user ID
+func (s *Session) UserIDGet() int64 {
 	return s.userID
 }
 
-// destroy destroys current session
-func (s *session) destroy() error {
-
-	r, err := redisConnect(s.host)
-	if err != nil {
-		return err
-	}
-	defer r.close()
-
-	return r.sessDel(s.chatID, s.userID)
+// UserNameGet gets current session user name
+func (s *Session) UserNameGet() string {
+	return s.userName
 }
 
-// stateGet gets current session state
-func (s *session) stateGet() (SessionState, bool, error) {
-
-	r, err := redisConnect(s.host)
-	if err != nil {
-		return sessionBreak, false, err
-	}
-	defer r.close()
-
-	d, e, err := r.sessGet(s.chatID, s.userID)
-	if err != nil {
-		return sessionBreak, false, err
-	}
-
-	return SessionState{d.State}, e, nil
+// UpdateChain gets update chain from session
+func (s *Session) UpdateChain() *UpdateChain {
+	return s.updateChain
 }
 
-// stateSet sets session into state `state`.
-// Starts new session if not exist
-func (s *session) stateSet(state SessionState) error {
+// SlotSave saves data into specified slot
+func (s *Session) SlotSave(slot string, data interface{}) error {
 
-	r, err := redisConnect(s.host)
-	if err != nil {
-		return err
-	}
-	defer r.close()
-
-	d, e, err := r.sessGet(s.chatID, s.userID)
-	if err != nil {
-		return err
-	}
-
-	if e == false {
-		d = data{
-			State: state.state,
-			Slots: make(map[string]interface{}),
-		}
-	} else {
-		d.State = state.state
-	}
-
-	return r.sessSave(s.chatID, s.userID, d)
-}
-
-// slotSave saves data into specified slot
-func (s *session) slotSave(slot string, data interface{}) error {
-
-	r, err := redisConnect(s.host)
-	if err != nil {
-		return err
-	}
-	defer r.close()
-
-	d, e, err := r.sessGet(s.chatID, s.userID)
+	d, e, err := s.redis.sessGet(s.chatID, s.userID)
 	if err != nil {
 		return err
 	}
@@ -140,19 +111,13 @@ func (s *session) slotSave(slot string, data interface{}) error {
 
 	d.Slots[slot] = data
 
-	return r.sessSave(s.chatID, s.userID, d)
+	return s.redis.sessSave(s.chatID, s.userID, d)
 }
 
-// slotGet gets data from specified slot
-func (s *session) slotGet(slot string) (interface{}, bool, error) {
+// SlotGet gets data from specified slot
+func (s *Session) SlotGet(slot string) (interface{}, bool, error) {
 
-	r, err := redisConnect(s.host)
-	if err != nil {
-		return nil, false, err
-	}
-	defer r.close()
-
-	d, e, err := r.sessGet(s.chatID, s.userID)
+	d, e, err := s.redis.sessGet(s.chatID, s.userID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -166,16 +131,10 @@ func (s *session) slotGet(slot string) (interface{}, bool, error) {
 	return data, e, nil
 }
 
-// slotDel geletes spcified slot
-func (s *session) slotDel(slot string) error {
+// SlotDel deletes spcified slot
+func (s *Session) SlotDel(slot string) error {
 
-	r, err := redisConnect(s.host)
-	if err != nil {
-		return err
-	}
-	defer r.close()
-
-	d, e, err := r.sessGet(s.chatID, s.userID)
+	d, e, err := s.redis.sessGet(s.chatID, s.userID)
 	if err != nil {
 		return err
 	}
@@ -186,5 +145,224 @@ func (s *session) slotDel(slot string) error {
 
 	delete(d.Slots, slot)
 
-	return r.sessSave(s.chatID, s.userID, d)
+	return s.redis.sessSave(s.chatID, s.userID, d)
+}
+
+// stateProcessing processes current session state.
+// It's initial point to route processing into appropriate state
+// in accordance with update chain
+func (s *Session) stateProcessing(t *Telegram) error {
+
+	// Check `update` is a defined command
+	b, err := s.stateCommandProcessing(t)
+	if b == true {
+		// If command were found
+		return err
+	}
+
+	switch s.UpdateChain().TypeGet() {
+	case UpdateTypeMessage:
+		return s.stateMessageProcessing(t)
+	case UpdateTypeCallback:
+		return s.stateCallbackProcessing(t)
+	}
+
+	return nil
+}
+
+// stateInitProcessing processes session init state
+func (s *Session) stateInitProcessing(t *Telegram) error {
+
+	if t.description.InitHandler == nil {
+		return nil
+	}
+
+	// Call initHandler
+	r, err := t.description.InitHandler(t, s)
+	if err != nil {
+		return err
+	}
+
+	return s.stateSwitch(t, r.NextState, 0)
+}
+
+// stateCommandProcessing lookups and processes command (if described) by message text from Telegram update.
+func (s *Session) stateCommandProcessing(t *Telegram) (bool, error) {
+
+	// Check update contains command
+	cmd, args := s.UpdateChain().commandCheck()
+	if len(cmd) == 0 {
+		return false, nil
+	}
+
+	// Check specified command defined in bot description
+	c, b := t.description.Commands[cmd]
+	if b == false {
+		return false, nil
+	}
+
+	// Check handler defined for command
+	if c.Handler == nil {
+		return true, nil
+	}
+
+	r, err := c.Handler(t, s, cmd, args)
+	if err != nil {
+		return true, err
+	}
+
+	return true, s.stateSwitch(t, r.NextState, 0)
+}
+
+// stateMessageProcessing processes update chain with `message` type
+func (s *Session) stateMessageProcessing(t *Telegram) error {
+
+	// Get current session
+	cs, e, err := s.stateGet()
+	if err != nil {
+		return err
+	}
+
+	// If session does not exist
+	if e == false {
+		return s.stateInitProcessing(t)
+	}
+
+	// Get state description
+	state, b := t.description.States[cs]
+	if b == false {
+		return ErrDescriptionStateMissing
+	}
+
+	if state.MessageHandler == nil {
+		return nil
+	}
+
+	r, err := state.MessageHandler(t, s)
+	if err != nil {
+		return err
+	}
+
+	return s.stateSwitch(t, r.NextState, 0)
+}
+
+// stateCallbackProcessing processes update chain with `callback` type
+func (s *Session) stateCallbackProcessing(t *Telegram) error {
+
+	cbs, identifier, err := s.UpdateChain().callbackSessionStateGet()
+	if err != nil {
+		return err
+	}
+
+	// Get state description
+	state, b := t.description.States[cbs]
+	if b == false {
+		return ErrDescriptionStateMissing
+	}
+
+	if state.CallbackHandler == nil {
+		return nil
+	}
+
+	r, err := state.CallbackHandler(t, s, identifier)
+	if err != nil {
+		return err
+	}
+
+	return s.stateSwitch(t, r.NextState, s.UpdateChain().MessagesIDGet())
+}
+
+func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int) error {
+
+	var mID int
+
+	switch newState {
+	case sessionBreak:
+		return nil
+	case sessionDestroy:
+		return s.destroy()
+	}
+
+	state, b := t.description.States[newState]
+	if b == false {
+		return ErrDescriptionStateMissing
+	}
+
+	// Put session into new state
+	if err := s.stateSet(newState); err != nil {
+		return err
+	}
+
+	if state.StateHandler == nil {
+		// Do nothing if state handler not defined
+		return nil
+	}
+
+	hr, err := state.StateHandler(t, s)
+	if err != nil {
+		return err
+	}
+
+	if hr.StickMessage == true {
+		mID = messageID
+	}
+
+	// Send message to user if set
+	if len(hr.Message) > 0 {
+
+		msgs, err := t.sendMessage(s.ChatIDGet(), mID, hr.Message, hr.Buttons, newState)
+		if err != nil {
+			return err
+		}
+
+		if state.SentHandler != nil {
+			if err := state.SentHandler(t, s, msgs); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Do not switch next state if message handler defined
+	if state.MessageHandler != nil {
+		return nil
+	}
+
+	return s.stateSwitch(t, hr.NextState, mID)
+}
+
+// destroy destroys current session
+func (s *Session) destroy() error {
+	return s.redis.sessDel(s.chatID, s.userID)
+}
+
+// stateGet gets current session state
+func (s *Session) stateGet() (SessionState, bool, error) {
+
+	d, e, err := s.redis.sessGet(s.chatID, s.userID)
+	if err != nil {
+		return sessionBreak, false, err
+	}
+
+	return SessionState{d.State}, e, nil
+}
+
+// stateSet sets session into state `state`.
+// Starts new session if not exist
+func (s *Session) stateSet(state SessionState) error {
+
+	d, e, err := s.redis.sessGet(s.chatID, s.userID)
+	if err != nil {
+		return err
+	}
+
+	if e == false {
+		d = data{
+			State: state.state,
+			Slots: make(map[string]interface{}),
+		}
+	} else {
+		d.State = state.state
+	}
+
+	return s.redis.sessSave(s.chatID, s.userID, d)
 }
