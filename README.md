@@ -47,7 +47,7 @@ Note that it is not recommended to send messages to user directly from any handl
 ### Commands
 
 It is a set of Telegram commands that can be used by users. Each `command` has the following properties:
-- `Name`: string, defines a command name (excluding leading '/' character).
+- `Command`: string, defines a command name (excluding leading '/' character).
 - `Description`: string, defines a command description.
 - `Handler`: function, determines a function that will be done when user execute appropriate command. Handler function does defined actions and returns a new state bot will be switched to.
 
@@ -119,12 +119,14 @@ func main() {
 
 	// Bot description
 	botDescription := tg.Description{
-		Commands: map[string]tg.CommandMeta{
-			"sayhello": {
+		Commands: []tg.Command{
+			{
+				Command:     "sayhello",
 				Description: "Bot says you hello and begins a conversation",
 				Handler:     sayHelloCmd,
 			},
-			"destroy": {
+			{
+				Command:     "destroy",
 				Description: "Destroy current session",
 				Handler:     destroyCmd,
 			},

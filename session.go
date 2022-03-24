@@ -196,8 +196,8 @@ func (s *Session) stateCommandProcessing(t *Telegram) (bool, error) {
 	}
 
 	// Check specified command defined in bot description
-	c, b := t.description.Commands[cmd]
-	if b == false {
+	c := t.description.commandLookup(cmd)
+	if c == nil {
 		return false, nil
 	}
 

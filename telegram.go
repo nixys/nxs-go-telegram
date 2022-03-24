@@ -18,9 +18,6 @@ import (
 // MessageSent it's an alias for tgbotapi.Message
 type MessageSent tgbotapi.Message
 
-// CommandHandler defines command handler type
-type CommandHandler func(t *Telegram, s *Session, cmd string, args string) (CommandHandlerRes, error)
-
 // Telegram it is a module context structure
 type Telegram struct {
 	bot             *tgbotapi.BotAPI
@@ -64,9 +61,9 @@ type SettingsBotProxy struct {
 type Description struct {
 
 	// Commands contains Telegram commands available for bot.
-	// Each record in map it's a command name (without leading
-	// '/' character) and its handler
-	Commands map[string]CommandMeta
+	// Each record it's a command name (without leading
+	// '/' character), its description and handler
+	Commands []Command
 
 	// States contains the states description.
 	// Map key it's a state name that must be set with the
@@ -129,10 +126,18 @@ type CommandHandlerRes struct {
 	NextState SessionState
 }
 
-// CommandMeta contains data for command
-type CommandMeta struct {
+// Command contains data for command
+type Command struct {
+
+	// Command able to execute by user (without leading
+	// '/' character)
+	Command string
+
+	// Command description that users will see in Telegram
 	Description string
-	Handler     CommandHandler
+
+	// Handler to processing command received from user
+	Handler func(t *Telegram, s *Session, cmd string, args string) (CommandHandlerRes, error)
 }
 
 // State contains session state description
@@ -482,10 +487,10 @@ func (t *Telegram) commandsSet() error {
 
 	var bcmds []tgbotapi.BotCommand
 
-	for c, m := range t.description.Commands {
+	for _, c := range t.description.Commands {
 		bcmds = append(bcmds, tgbotapi.BotCommand{
-			Command:     c,
-			Description: m.Description,
+			Command:     c.Command,
+			Description: c.Description,
 		})
 	}
 
@@ -575,4 +580,13 @@ func botConnect(botAPI string, p *SettingsBotProxy) (*tgbotapi.BotAPI, error) {
 	}
 
 	return nil, fmt.Errorf("unknown proxy type")
+}
+
+func (d *Description) commandLookup(cmd string) *Command {
+	for _, c := range d.Commands {
+		if c.Command == cmd {
+			return &c
+		}
+	}
+	return nil
 }
