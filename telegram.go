@@ -204,6 +204,20 @@ type FileSend struct {
 	Buttons  [][]Button
 }
 
+// SendMessageData contains an options for message
+type SendMessageData struct {
+
+	// Message defines a message text will sent to user
+	Message string
+
+	// Button defines buttons for message
+	Buttons [][]Button
+
+	// `ButtonState` set a state from bot description
+	// with callback handler for spcified buttons
+	ButtonState SessionState
+}
+
 // Setup settings up Telegram bot
 func Setup(s Settings, description Description, usrCtx interface{}) (Telegram, error) {
 
@@ -503,8 +517,8 @@ func (t *Telegram) commandsSet() error {
 }
 
 // sendMessage sends specified message to client
-// Messages can be of two types: either new message, or edit existing message (if messageID is set)
-func (t *Telegram) sendMessage(chatID int64, messageID int, message string, buttons [][]Button, state SessionState) ([]MessageSent, error) {
+// Messages can be of two types: either new message, or edit existing message (if messageID is set).
+func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageData) ([]MessageSent, error) {
 
 	var (
 		bm  [][]tgbotapi.InlineKeyboardButton
@@ -514,12 +528,12 @@ func (t *Telegram) sendMessage(chatID int64, messageID int, message string, butt
 	)
 
 	// If buttons set
-	if len(buttons) > 0 {
-		for _, br := range buttons {
+	if len(msgData.Buttons) > 0 {
+		for _, br := range msgData.Buttons {
 			var b []tgbotapi.InlineKeyboardButton
 			for _, be := range br {
 
-				d, err := callbackDataGen(state, be.Identifier)
+				d, err := callbackDataGen(msgData.ButtonState, be.Identifier)
 				if err != nil {
 					return []MessageSent{}, err
 				}
@@ -533,19 +547,19 @@ func (t *Telegram) sendMessage(chatID int64, messageID int, message string, butt
 	}
 
 	if messageID == 0 {
-		msg := tgbotapi.NewMessage(chatID, message)
+		msg := tgbotapi.NewMessage(chatID, msgData.Message)
 		msg.ParseMode = tgbotapi.ModeMarkdown
 
-		if len(buttons) > 0 {
+		if len(msgData.Buttons) > 0 {
 			msg.ReplyMarkup = ikm
 		}
 
 		mr, err = t.bot.Send(msg)
 	} else {
-		msg := tgbotapi.NewEditMessageText(chatID, messageID, message)
+		msg := tgbotapi.NewEditMessageText(chatID, messageID, msgData.Message)
 		msg.ParseMode = tgbotapi.ModeMarkdown
 
-		if len(buttons) > 0 {
+		if len(msgData.Buttons) > 0 {
 			msg.ReplyMarkup = &ikm
 		}
 

@@ -254,6 +254,14 @@ func (s *Session) stateCallbackProcessing(t *Telegram) error {
 		return err
 	}
 
+	// Check the button contains special states
+	switch cbs {
+	case
+		sessionBreak,
+		sessionDestroy:
+		return s.stateSwitch(t, cbs, s.UpdateChain().MessagesIDGet())
+	}
+
 	// Get state description
 	state, b := t.description.States[cbs]
 	if b == false {
@@ -310,7 +318,11 @@ func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int)
 	// Send message to user if set
 	if len(hr.Message) > 0 {
 
-		msgs, err := t.sendMessage(s.ChatIDGet(), mID, hr.Message, hr.Buttons, newState)
+		msgs, err := t.SendMessage(s.ChatIDGet(), mID, SendMessageData{
+			Message:     hr.Message,
+			Buttons:     hr.Buttons,
+			ButtonState: newState,
+		})
 		if err != nil {
 			return err
 		}
