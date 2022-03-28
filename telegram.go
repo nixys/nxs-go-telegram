@@ -334,6 +334,59 @@ func (t *Telegram) UsrCtxGet() interface{} {
 	return t.usrCtx
 }
 
+// sendMessage sends specified message to client
+// Messages can be of two types: either new message, or edit existing message (if messageID is set).
+func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageData) ([]MessageSent, error) {
+
+	var (
+		bm  [][]tgbotapi.InlineKeyboardButton
+		ikm tgbotapi.InlineKeyboardMarkup
+		mr  tgbotapi.Message
+		err error
+	)
+
+	// If buttons set
+	if len(msgData.Buttons) > 0 {
+		for _, br := range msgData.Buttons {
+			var b []tgbotapi.InlineKeyboardButton
+			for _, be := range br {
+
+				d, err := callbackDataGen(msgData.ButtonState, be.Identifier)
+				if err != nil {
+					return []MessageSent{}, err
+				}
+
+				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, d))
+			}
+			bm = append(bm, b)
+		}
+
+		ikm = tgbotapi.NewInlineKeyboardMarkup(bm...)
+	}
+
+	if messageID == 0 {
+		msg := tgbotapi.NewMessage(chatID, msgData.Message)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+
+		if len(msgData.Buttons) > 0 {
+			msg.ReplyMarkup = ikm
+		}
+
+		mr, err = t.bot.Send(msg)
+	} else {
+		msg := tgbotapi.NewEditMessageText(chatID, messageID, msgData.Message)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+
+		if len(msgData.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
+		}
+
+		mr, err = t.bot.Send(msg)
+	}
+
+	return []MessageSent{MessageSent(mr)}, err
+}
+
 // DownloadFileStream returns io.ReadCloser to download specified file
 func (t *Telegram) DownloadFileStream(file File) (io.ReadCloser, error) {
 
@@ -514,59 +567,6 @@ func (t *Telegram) commandsSet() error {
 	}
 
 	return nil
-}
-
-// sendMessage sends specified message to client
-// Messages can be of two types: either new message, or edit existing message (if messageID is set).
-func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageData) ([]MessageSent, error) {
-
-	var (
-		bm  [][]tgbotapi.InlineKeyboardButton
-		ikm tgbotapi.InlineKeyboardMarkup
-		mr  tgbotapi.Message
-		err error
-	)
-
-	// If buttons set
-	if len(msgData.Buttons) > 0 {
-		for _, br := range msgData.Buttons {
-			var b []tgbotapi.InlineKeyboardButton
-			for _, be := range br {
-
-				d, err := callbackDataGen(msgData.ButtonState, be.Identifier)
-				if err != nil {
-					return []MessageSent{}, err
-				}
-
-				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, d))
-			}
-			bm = append(bm, b)
-		}
-
-		ikm = tgbotapi.NewInlineKeyboardMarkup(bm...)
-	}
-
-	if messageID == 0 {
-		msg := tgbotapi.NewMessage(chatID, msgData.Message)
-		msg.ParseMode = tgbotapi.ModeMarkdown
-
-		if len(msgData.Buttons) > 0 {
-			msg.ReplyMarkup = ikm
-		}
-
-		mr, err = t.bot.Send(msg)
-	} else {
-		msg := tgbotapi.NewEditMessageText(chatID, messageID, msgData.Message)
-		msg.ParseMode = tgbotapi.ModeMarkdown
-
-		if len(msgData.Buttons) > 0 {
-			msg.ReplyMarkup = &ikm
-		}
-
-		mr, err = t.bot.Send(msg)
-	}
-
-	return []MessageSent{MessageSent(mr)}, err
 }
 
 // botConnect sets up Telegram bot
