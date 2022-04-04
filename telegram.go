@@ -218,8 +218,8 @@ type SendMessageData struct {
 	ButtonState SessionState
 }
 
-// Setup settings up Telegram bot
-func Setup(s Settings, description Description, usrCtx interface{}) (Telegram, error) {
+// Init initializes Telegram bot
+func Init(s Settings, description Description, usrCtx interface{}) (Telegram, error) {
 
 	var t Telegram
 

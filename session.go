@@ -1,6 +1,8 @@
 package tg
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 )
 
@@ -28,8 +30,8 @@ var (
 
 // data contains session data
 type data struct {
-	State string                 `json:"state"`
-	Slots map[string]interface{} `json:"slots"`
+	State string            `json:"state"`
+	Slots map[string][]byte `json:"slots"`
 }
 
 func SessStateBreak() SessionState {
@@ -100,6 +102,8 @@ func (s *Session) UpdateChain() *UpdateChain {
 // SlotSave saves data into specified slot
 func (s *Session) SlotSave(slot string, data interface{}) error {
 
+	var buf bytes.Buffer
+
 	d, e, err := s.redis.sessGet(s.chatID, s.userID)
 	if err != nil {
 		return err
@@ -109,26 +113,38 @@ func (s *Session) SlotSave(slot string, data interface{}) error {
 		return fmt.Errorf("session does not exist")
 	}
 
-	d.Slots[slot] = data
+	// Encode data to bytes
+	if err := gob.NewEncoder(&buf).Encode(data); err != nil {
+		return err
+	}
+
+	d.Slots[slot] = buf.Bytes()
 
 	return s.redis.sessSave(s.chatID, s.userID, d)
 }
 
 // SlotGet gets data from specified slot
-func (s *Session) SlotGet(slot string) (interface{}, bool, error) {
+func (s *Session) SlotGet(slot string, data interface{}) (bool, error) {
 
 	d, e, err := s.redis.sessGet(s.chatID, s.userID)
 	if err != nil {
-		return nil, false, err
+		return false, err
 	}
 
 	if e == false {
-		return nil, false, fmt.Errorf("session does not exist")
+		return false, fmt.Errorf("session does not exist")
 	}
 
-	data, e := d.Slots[slot]
+	ds, e := d.Slots[slot]
+	if e == false {
+		return false, nil
+	}
 
-	return data, e, nil
+	if err := gob.NewDecoder(bytes.NewBuffer(ds)).Decode(data); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // SlotDel deletes spcified slot
@@ -370,7 +386,7 @@ func (s *Session) stateSet(state SessionState) error {
 	if e == false {
 		d = data{
 			State: state.state,
-			Slots: make(map[string]interface{}),
+			Slots: make(map[string][]byte),
 		}
 	} else {
 		d.State = state.state
