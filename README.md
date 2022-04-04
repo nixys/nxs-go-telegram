@@ -157,8 +157,8 @@ func main() {
 		},
 	}
 
-	// Setup the bot
-	bot, err := tg.Setup(tg.Settings{
+	// Initialize the bot
+	bot, err := tg.Init(tg.Settings{
 		BotSettings: tg.SettingsBot{
 			BotAPI: os.Getenv("BOT_API_TOKEN"),
 		},
@@ -364,24 +364,23 @@ func ageMsg(t *tg.Telegram, s *tg.Session) (tg.MessageHandlerRes, error) {
 // infoState represents StateHandler for `info` state
 func infoState(t *tg.Telegram, s *tg.Session) (tg.StateHandlerRes, error) {
 
-	n, _, err := s.SlotGet("name")
-	if err != nil {
+	var (
+		name   string
+		gender string
+		age    string
+	)
+
+	if _, err := s.SlotGet("name", &name); err != nil {
 		return tg.StateHandlerRes{}, err
 	}
 
-	g, _, err := s.SlotGet("gender")
-	if err != nil {
+	if _, err := s.SlotGet("gender", &gender); err != nil {
 		return tg.StateHandlerRes{}, err
 	}
 
-	a, _, err := s.SlotGet("age")
-	if err != nil {
+	if _, err := s.SlotGet("age", &age); err != nil {
 		return tg.StateHandlerRes{}, err
 	}
-
-	name := n.(string)
-	gender := g.(string)
-	age := a.(string)
 
 	m := fmt.Sprintf("Info:\n"+
 		"  Name: %s\n"+
