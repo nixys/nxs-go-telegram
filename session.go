@@ -46,6 +46,10 @@ func SessState(stateName string) SessionState {
 	return SessionState{"user:" + stateName}
 }
 
+func (s SessionState) String() string {
+	return s.state
+}
+
 // sessionInit initiates session
 func sessionInit(uc UpdateChain, redisHost string) (*Session, error) {
 
@@ -189,6 +193,8 @@ func (s *Session) stateProcessing(t *Telegram) error {
 // stateInitProcessing processes session init state
 func (s *Session) stateInitProcessing(t *Telegram) error {
 
+	var ns SessionState
+
 	if t.description.InitHandler == nil {
 		return nil
 	}
@@ -196,14 +202,28 @@ func (s *Session) stateInitProcessing(t *Telegram) error {
 	// Call initHandler
 	r, err := t.description.InitHandler(t, s)
 	if err != nil {
-		return err
+
+		if t.description.ErrorHandler == nil {
+			return err
+		}
+
+		r, err := t.description.ErrorHandler(t, s, err)
+		if err != nil {
+			return err
+		}
+
+		ns = r.NextState
+	} else {
+		ns = r.NextState
 	}
 
-	return s.stateSwitch(t, r.NextState, 0)
+	return s.stateSwitch(t, ns, 0)
 }
 
 // stateCommandProcessing lookups and processes command (if described) by message text from Telegram update.
 func (s *Session) stateCommandProcessing(t *Telegram) (bool, error) {
+
+	var ns SessionState
 
 	// Check update contains command
 	cmd, args := s.UpdateChain().commandCheck()
@@ -224,17 +244,31 @@ func (s *Session) stateCommandProcessing(t *Telegram) (bool, error) {
 
 	r, err := c.Handler(t, s, cmd, args)
 	if err != nil {
-		return true, err
+
+		if t.description.ErrorHandler == nil {
+			return true, err
+		}
+
+		r, err := t.description.ErrorHandler(t, s, err)
+		if err != nil {
+			return true, err
+		}
+
+		ns = r.NextState
+	} else {
+		ns = r.NextState
 	}
 
-	return true, s.stateSwitch(t, r.NextState, 0)
+	return true, s.stateSwitch(t, ns, 0)
 }
 
 // stateMessageProcessing processes update chain with `message` type
 func (s *Session) stateMessageProcessing(t *Telegram) error {
 
+	var ns SessionState
+
 	// Get current session
-	cs, e, err := s.stateGet()
+	cs, e, err := s.StateGet()
 	if err != nil {
 		return err
 	}
@@ -256,14 +290,28 @@ func (s *Session) stateMessageProcessing(t *Telegram) error {
 
 	r, err := state.MessageHandler(t, s)
 	if err != nil {
-		return err
+
+		if t.description.ErrorHandler == nil {
+			return err
+		}
+
+		r, err := t.description.ErrorHandler(t, s, err)
+		if err != nil {
+			return err
+		}
+
+		ns = r.NextState
+	} else {
+		ns = r.NextState
 	}
 
-	return s.stateSwitch(t, r.NextState, 0)
+	return s.stateSwitch(t, ns, 0)
 }
 
 // stateCallbackProcessing processes update chain with `callback` type
 func (s *Session) stateCallbackProcessing(t *Telegram) error {
+
+	var ns SessionState
 
 	cbs, identifier, err := s.UpdateChain().callbackSessionStateGet()
 	if err != nil {
@@ -290,10 +338,22 @@ func (s *Session) stateCallbackProcessing(t *Telegram) error {
 
 	r, err := state.CallbackHandler(t, s, identifier)
 	if err != nil {
-		return err
+
+		if t.description.ErrorHandler == nil {
+			return err
+		}
+
+		r, err := t.description.ErrorHandler(t, s, err)
+		if err != nil {
+			return err
+		}
+
+		ns = r.NextState
+	} else {
+		ns = r.NextState
 	}
 
-	return s.stateSwitch(t, r.NextState, s.UpdateChain().MessagesIDGet())
+	return s.stateSwitch(t, ns, s.UpdateChain().MessagesIDGet())
 }
 
 func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int) error {
@@ -324,7 +384,17 @@ func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int)
 
 	hr, err := state.StateHandler(t, s)
 	if err != nil {
-		return err
+
+		if t.description.ErrorHandler == nil {
+			return err
+		}
+
+		r, err := t.description.ErrorHandler(t, s, err)
+		if err != nil {
+			return err
+		}
+
+		return s.stateSwitch(t, r.NextState, 0)
 	}
 
 	if hr.StickMessage == true {
@@ -364,7 +434,7 @@ func (s *Session) destroy() error {
 }
 
 // stateGet gets current session state
-func (s *Session) stateGet() (SessionState, bool, error) {
+func (s *Session) StateGet() (SessionState, bool, error) {
 
 	d, e, err := s.redis.sessGet(s.chatID, s.userID)
 	if err != nil {

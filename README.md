@@ -41,6 +41,7 @@ Bot's behaviour based on session model and described by different states. As a `
 - `Commands`
 - `States`
 - `InitHandler`
+- `ErrorHandler`
 
 Note that it is not recommended to send messages to user directly from any handler.
 
@@ -95,6 +96,10 @@ This handler is called for an appropriate state after message prepared in `State
 ### InitHandler
 
 This handler is called when session has not been started yet. The main goal for this handler it's a do some initial actions (eg. check auth or something like) and return a first state session will be swiched to.
+
+### ErrorHandler
+
+This handler is called when any other handler returned an error. The main goal for this handler it's a do some common actions (eg. send user a message via Telegram) and return a new session state.
 
 ## Example of usage
 

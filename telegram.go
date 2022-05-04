@@ -74,10 +74,22 @@ type Description struct {
 	// when session has not been started yet.
 	// This element returns only next state.
 	InitHandler func(t *Telegram, s *Session) (InitHandlerRes, error)
+
+	// ErrorHandler is a handler called if any other handlers returned an error
+	ErrorHandler func(t *Telegram, s *Session, e error) (ErrorHandlerRes, error)
 }
 
 // InitHandlerRes contains data returned by the InitHandler
 type InitHandlerRes struct {
+
+	// New state to switch the session.
+	// All values of NextState must exist in States map
+	// within the bot description
+	NextState SessionState
+}
+
+// ErrorHandlerRes contains data returned by the ErrorHandler
+type ErrorHandlerRes struct {
 
 	// New state to switch the session.
 	// All values of NextState must exist in States map
