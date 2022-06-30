@@ -24,6 +24,10 @@ var (
 	// sessionDestroy it's a 'destroy' session state
 	sessionDestroy SessionState = SessionState{"internal:destroy"}
 
+	// sessionContinue it's a 'continue' session state. Used only for
+	// PrimeHandler
+	sessionContinue SessionState = SessionState{"internal:continue"}
+
 	// sessionBreak it's a 'break' session state
 	sessionBreak SessionState = SessionState{""}
 )
@@ -34,14 +38,22 @@ type data struct {
 	Slots map[string][]byte `json:"slots"`
 }
 
+// SessStateBreak creates a `break` session state
 func SessStateBreak() SessionState {
 	return sessionBreak
 }
 
+// SessStateBreak creates a `continue` session state
+func SessStateContinue() SessionState {
+	return sessionContinue
+}
+
+// SessStateBreak creates a `destroy` session state
 func SessStateDestroy() SessionState {
 	return sessionDestroy
 }
 
+// SessState creates a specified session state
 func SessState(stateName string) SessionState {
 	return SessionState{"user:" + stateName}
 }
@@ -195,6 +207,15 @@ func (s *Session) stateInitProcessing(t *Telegram) error {
 
 	var ns SessionState
 
+	// Call PrimeHandler if specified
+	phs, err := primeProcessing(t, s, HandlerSourceInit)
+	if err != nil {
+		return err
+	}
+	if phs != sessionContinue {
+		return s.stateSwitch(t, phs, 0)
+	}
+
 	if t.description.InitHandler == nil {
 		return nil
 	}
@@ -235,6 +256,15 @@ func (s *Session) stateCommandProcessing(t *Telegram) (bool, error) {
 	c := t.description.commandLookup(cmd)
 	if c == nil {
 		return false, nil
+	}
+
+	// Call PrimeHandler if specified
+	phs, err := primeProcessing(t, s, HandlerSourceCommand)
+	if err != nil {
+		return true, err
+	}
+	if phs != sessionContinue {
+		return true, s.stateSwitch(t, phs, 0)
 	}
 
 	// Check handler defined for command
@@ -284,6 +314,15 @@ func (s *Session) stateMessageProcessing(t *Telegram) error {
 		return ErrDescriptionStateMissing
 	}
 
+	// Call PrimeHandler if specified
+	phs, err := primeProcessing(t, s, HandlerSourceMessage)
+	if err != nil {
+		return err
+	}
+	if phs != sessionContinue {
+		return s.stateSwitch(t, phs, 0)
+	}
+
 	if state.MessageHandler == nil {
 		return nil
 	}
@@ -312,6 +351,15 @@ func (s *Session) stateMessageProcessing(t *Telegram) error {
 func (s *Session) stateCallbackProcessing(t *Telegram) error {
 
 	var ns SessionState
+
+	// Call PrimeHandler if specified
+	phs, err := primeProcessing(t, s, HandlerSourceCallback)
+	if err != nil {
+		return err
+	}
+	if phs != sessionContinue {
+		return s.stateSwitch(t, phs, 0)
+	}
 
 	cbs, identifier, err := s.UpdateChain().callbackSessionStateGet()
 	if err != nil {
@@ -463,4 +511,33 @@ func (s *Session) stateSet(state SessionState) error {
 	}
 
 	return s.redis.sessSave(s.chatID, s.userID, d)
+}
+
+// primeProcessing processes PrimeHandler if set
+func primeProcessing(t *Telegram, s *Session, hs HandlerSource) (SessionState, error) {
+
+	// If PrimeHandler not set return `continue` state
+	if t.description.PrimeHandler == nil {
+		return sessionContinue, nil
+	}
+
+	// Call PrimeHandler
+	phr, err := t.description.PrimeHandler(t, s, hs)
+	if err == nil {
+		return phr.NextState, nil
+	}
+
+	// If error occurred check ErrorHandler is specified
+	if t.description.ErrorHandler == nil {
+		return sessionBreak, err
+	}
+
+	// Call ErrorHandler
+	ehr, err := t.description.ErrorHandler(t, s, err)
+	if err != nil {
+		return sessionBreak, err
+	}
+
+	// Return new session state
+	return ehr.NextState, nil
 }

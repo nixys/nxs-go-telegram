@@ -77,6 +77,13 @@ type Description struct {
 
 	// ErrorHandler is a handler called if any other handlers returned an error
 	ErrorHandler func(t *Telegram, s *Session, e error) (ErrorHandlerRes, error)
+
+	// PrimeHandler is a handler called before any user action handlers, i.e.
+	// CommandHandler, InitHandler, MessageHandler, CallbackHandler.
+	// If PrimeHandler returns an error, ErrorHandler will be called.
+	// If PrimeHandler returns a `sessionContinue` as a new session state, following handlers
+	// will be called. Otherwise session will be switched to specified state.
+	PrimeHandler func(t *Telegram, s *Session, hs HandlerSource) (PrimeHandlerRes, error)
 }
 
 // InitHandlerRes contains data returned by the InitHandler
@@ -85,6 +92,15 @@ type InitHandlerRes struct {
 	// New state to switch the session.
 	// All values of NextState must exist in States map
 	// within the bot description
+	NextState SessionState
+}
+
+// PrimeHandlerRes contains data returned by the PrimeHandler
+type PrimeHandlerRes struct {
+
+	// New state to switch the session.
+	// All values of NextState must exist in States map
+	// within the bot description.
 	NextState SessionState
 }
 
@@ -228,6 +244,20 @@ type SendMessageData struct {
 	// `ButtonState` set a state from bot description
 	// with callback handler for spcified buttons
 	ButtonState SessionState
+}
+
+// HandlerSource is a type of source handler where PrimeHandler was called
+type HandlerSource string
+
+const (
+	HandlerSourceInit     HandlerSource = "init"
+	HandlerSourceCommand  HandlerSource = "command"
+	HandlerSourceMessage  HandlerSource = "message"
+	HandlerSourceCallback HandlerSource = "callback"
+)
+
+func (hs HandlerSource) String() string {
+	return string(hs)
 }
 
 // Init initializes Telegram bot

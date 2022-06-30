@@ -65,6 +65,7 @@ Each session `state` has following properties:
 Library has two special states you may use within a your handlers:
 - `tg.SessStateBreak()`: do not switch a session into new state (stay in a current state).
 - `tg.SessStateDestroy()`: destroy session. It will be clear all session data including session state and slots. Bot will go to its original state.
+- `tg.SessStateContinue()`: used only for `PrimeHandler` to continue execute of source handler after `PrimeHandler` was called.
 
 In other cases to switch session to state you want use `tg.SessState(botNewState)`.
 
@@ -92,6 +93,14 @@ If this handler is not defined bot will ignore any user buttons click for approp
 #### SentHandler
 
 This handler is called for an appropriate state after message prepared in `StateHandler` is sent to user. It useful for get sent messages ID.
+
+### PrimeHandler
+
+`PrimeHandler` is a handler called before any user action handlers, i.e. `CommandHandler`, `InitHandler`, `MessageHandler`, `CallbackHandler`. If `PrimeHandle`r returns an error, `ErrorHandler` will be called. If `PrimeHandler` returns a `continue` session state as a new session state, following handlers will be called. Otherwise session will be switched to specified state.
+
+Also `PrimeHandler` has an `HandlerSource` arg indicates a source handler where `PrimeHandler` was called.
+
+You may use `PrimeHandler` to do some general actions for bot handlers. E.g., check user authentication
 
 ### InitHandler
 
