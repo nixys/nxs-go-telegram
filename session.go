@@ -412,7 +412,7 @@ func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int)
 	case sessionBreak:
 		return nil
 	case sessionDestroy:
-		return s.destroy()
+		return s.destroy(t)
 	}
 
 	state, b := t.description.States[newState]
@@ -477,7 +477,14 @@ func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int)
 }
 
 // destroy destroys current session
-func (s *Session) destroy() error {
+func (s *Session) destroy(t *Telegram) error {
+
+	if t.description.DestroyHandler != nil {
+		if err := t.description.DestroyHandler(t, s); err != nil {
+			return err
+		}
+	}
+
 	return s.redis.sessDel(s.chatID, s.userID)
 }
 

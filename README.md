@@ -42,6 +42,7 @@ Bot's behaviour based on session model and described by different states. As a `
 - `States`
 - `InitHandler`
 - `ErrorHandler`
+- `DestroyHandler`
 
 Note that it is not recommended to send messages to user directly from any handler.
 
@@ -96,7 +97,7 @@ This handler is called for an appropriate state after message prepared in `State
 
 ### PrimeHandler
 
-`PrimeHandler` is a handler called before any user action handlers, i.e. `CommandHandler`, `InitHandler`, `MessageHandler`, `CallbackHandler`. If `PrimeHandle`r returns an error, `ErrorHandler` will be called. If `PrimeHandler` returns a `continue` session state as a new session state, following handlers will be called. Otherwise session will be switched to specified state.
+`PrimeHandler` is a handler called before any user action handlers, i.e. `CommandHandler`, `InitHandler`, `MessageHandler`, `CallbackHandler`. If `PrimeHandler` returns an error, `ErrorHandler` will be called. If `PrimeHandler` returns a `continue` session state as a new session state, following handlers will be called. Otherwise session will be switched to specified state.
 
 Also `PrimeHandler` has an `HandlerSource` arg indicates a source handler where `PrimeHandler` was called.
 
@@ -109,6 +110,10 @@ This handler is called when session has not been started yet. The main goal for 
 ### ErrorHandler
 
 This handler is called when any other handler returned an error. The main goal for this handler it's a do some common actions (eg. send user a message via Telegram) and return a new session state.
+
+### DestroyHandler
+
+This handler is called before session will be destroyed. The main goal of this handler is a do some common actions with data collected during the session (e.g. delete some files, cleanup some records in DB, etc) to prevent leak the memory and space.
 
 ## Example of usage
 

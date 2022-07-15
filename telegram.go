@@ -87,6 +87,9 @@ type Description struct {
 	// If PrimeHandler returns a `sessionContinue` as a new session state, following handlers
 	// will be called. Otherwise session will be switched to specified state.
 	PrimeHandler func(t *Telegram, s *Session, hs HandlerSource) (PrimeHandlerRes, error)
+
+	// DestroyHandler is a handler called before session will be destroyed
+	DestroyHandler func(t *Telegram, s *Session) error
 }
 
 // InitHandlerRes contains data returned by the InitHandler
