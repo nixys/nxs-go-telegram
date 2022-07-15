@@ -18,6 +18,9 @@ import (
 // MessageSent it's an alias for tgbotapi.Message
 type MessageSent tgbotapi.Message
 
+// ChatMember it's an alias for tgbotapi.ChatMember
+type ChatMember tgbotapi.ChatMember
+
 // Telegram it is a module context structure
 type Telegram struct {
 	bot             *tgbotapi.BotAPI
@@ -598,6 +601,21 @@ func (t *Telegram) UploadFile(chatID int64, file FileSend) (MessageSent, error) 
 		Caption:  file.Caption,
 		Buttons:  file.Buttons,
 	}, f)
+}
+
+func (t *Telegram) ChatMemberGet(chatID, userID int64) (ChatMember, error) {
+
+	c, err := t.bot.GetChatMember(tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: chatID,
+			UserID: userID,
+		},
+	})
+	if err != nil {
+		return ChatMember{}, err
+	}
+
+	return ChatMember(c), nil
 }
 
 // webhookSet sets Telegram webhook
