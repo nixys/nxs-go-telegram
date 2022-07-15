@@ -197,6 +197,9 @@ var (
 
 	// ErrUpdateChainZeroLen contains error "update has zero len"
 	ErrUpdateChainZeroLen = errors.New("update has zero len")
+
+	// ErrUpdateWrongType contains error "update has wrong type"
+	ErrUpdateWrongType = errors.New("update has wrong type")
 )
 
 // Button contains buttons data for state
@@ -219,6 +222,7 @@ type File struct {
 
 // FileSendStream contains options for sending file to Telegram as stream
 type FileSendStream struct {
+	FileType FileType
 	FileName string
 	FileSize int64
 	Caption  string
@@ -227,6 +231,7 @@ type FileSendStream struct {
 
 // FileSend contains options for sending file to Telegram
 type FileSend struct {
+	FileType FileType
 	FilePath string
 	Caption  string
 	Buttons  [][]Button
@@ -258,6 +263,22 @@ const (
 
 func (hs HandlerSource) String() string {
 	return string(hs)
+}
+
+// FileType specifies uploading file type
+type FileType int
+
+const (
+	FileTypeDocument FileType = iota
+	FileTypePhoto
+	FileTypeVoice
+	FileTypeVideo
+	FileTypeAudio
+	FileTypeSticker
+)
+
+func (f FileType) String() string {
+	return [...]string{"document", "photo", "voice", "video", "audio", "sticker"}[f]
 }
 
 // Init initializes Telegram bot
@@ -483,47 +504,81 @@ func (t *Telegram) DownloadFile(file File, dstPath string) error {
 	return nil
 }
 
-// UploadPhotoStream uploads file as photo to Telegram by specified reader
-func (t *Telegram) UploadPhotoStream(chatID int64, file FileSendStream, r io.Reader) (MessageSent, error) {
+// UploadFileStream uploads file to Telegram by specified reader
+func (t *Telegram) UploadFileStream(chatID int64, file FileSendStream, r io.Reader) (MessageSent, error) {
 
-	var (
-		bm  [][]tgbotapi.InlineKeyboardButton
-		ikm tgbotapi.InlineKeyboardMarkup
-	)
+	var c tgbotapi.Chattable
 
-	reader := tgbotapi.FileReader{
-		Name:   file.FileName,
-		Reader: r,
-	}
+	reader, ikm := uploadStreamPrepare(file, r)
 
-	// If buttons set
-	if len(file.Buttons) > 0 {
-		for _, br := range file.Buttons {
-			var b []tgbotapi.InlineKeyboardButton
-			for _, be := range br {
-				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, be.Identifier))
-			}
-			bm = append(bm, b)
+	switch file.FileType {
+	case FileTypePhoto:
+		msg := tgbotapi.NewPhoto(chatID, reader)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.Caption = file.Caption
+
+		if len(file.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
 		}
-		ikm = tgbotapi.NewInlineKeyboardMarkup(bm...)
+		c = msg
+
+	case FileTypeVoice:
+		msg := tgbotapi.NewVoice(chatID, reader)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.Caption = file.Caption
+
+		if len(file.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
+		}
+		c = msg
+
+	case FileTypeVideo:
+		msg := tgbotapi.NewVideo(chatID, reader)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.Caption = file.Caption
+
+		if len(file.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
+		}
+		c = msg
+
+	case FileTypeAudio:
+		msg := tgbotapi.NewAudio(chatID, reader)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.Caption = file.Caption
+
+		if len(file.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
+		}
+		c = msg
+
+	case FileTypeSticker:
+		msg := tgbotapi.NewSticker(chatID, reader)
+
+		if len(file.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
+		}
+		c = msg
+
+	default: // including FileTypeDocument case
+		// For other examples see: https://github.com/go-telegram-bot-api/telegram-bot-api/blob/master/bot_test.go
+		msg := tgbotapi.NewDocument(chatID, reader)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.Caption = file.Caption
+
+		if len(file.Buttons) > 0 {
+			msg.ReplyMarkup = &ikm
+		}
+
+		c = msg
 	}
 
-	// For other examples see: https://github.com/go-telegram-bot-api/telegram-bot-api/blob/master/bot_test.go
-	msg := tgbotapi.NewPhoto(chatID, reader)
-	msg.ParseMode = tgbotapi.ModeMarkdown
-	msg.Caption = file.Caption
-
-	if len(file.Buttons) > 0 {
-		msg.ReplyMarkup = &ikm
-	}
-
-	m, err := t.bot.Send(msg)
-
+	m, err := t.bot.Send(c)
 	return MessageSent(m), err
 }
 
-// UploadPhoto uploads file as photo to Telegram
-func (t *Telegram) UploadPhoto(chatID int64, file FileSend) (MessageSent, error) {
+// UploadFile uploads file as to Telegram
+func (t *Telegram) UploadFile(chatID int64, file FileSend) (MessageSent, error) {
 
 	f, err := os.Open(file.FilePath)
 	if err != nil {
@@ -536,7 +591,8 @@ func (t *Telegram) UploadPhoto(chatID int64, file FileSend) (MessageSent, error)
 		return MessageSent{}, err
 	}
 
-	return t.UploadPhotoStream(chatID, FileSendStream{
+	return t.UploadFileStream(chatID, FileSendStream{
+		FileType: file.FileType,
 		FileName: path.Base(file.FilePath),
 		FileSize: stat.Size(),
 		Caption:  file.Caption,
@@ -644,4 +700,32 @@ func (d *Description) commandLookup(cmd string) *Command {
 		}
 	}
 	return nil
+}
+
+// uploadStreamPrepare prepares reader and inline keyboard markup for stream uploading
+func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader, tgbotapi.InlineKeyboardMarkup) {
+
+	var (
+		bm  [][]tgbotapi.InlineKeyboardButton
+		ikm tgbotapi.InlineKeyboardMarkup
+	)
+
+	reader := tgbotapi.FileReader{
+		Name:   file.FileName,
+		Reader: r,
+	}
+
+	// If buttons set
+	if len(file.Buttons) > 0 {
+		for _, br := range file.Buttons {
+			var b []tgbotapi.InlineKeyboardButton
+			for _, be := range br {
+				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, be.Identifier))
+			}
+			bm = append(bm, b)
+		}
+		ikm = tgbotapi.NewInlineKeyboardMarkup(bm...)
+	}
+
+	return reader, ikm
 }

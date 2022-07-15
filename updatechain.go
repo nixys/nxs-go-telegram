@@ -129,67 +129,67 @@ func (uc *UpdateChain) CallbackQueryIDGet() string {
 
 // FilesGet gets files from update chain.
 // At the time only Photo, Document and Voice types are supported
-func (uc *UpdateChain) FilesGet(t Telegram) []File {
+func (uc *UpdateChain) FilesGet(t Telegram) ([]File, error) {
 
 	var files []File
 
 	if uc.updateType != UpdateTypeMessage {
-		return files
-
+		return []File{}, ErrUpdateWrongType
 	}
 
 	for _, u := range uc.updates {
 
 		if elt := u.Message.Photo; len(elt) > 0 {
 			// Get last element in array (largest by size)
-			e := elt[len(elt)-1]
-
-			f, err := t.bot.GetFile(tgbotapi.FileConfig{
-				FileID: e.FileID,
-			})
+			f, err := fileGet(t, elt[len(elt)-1].FileID, "")
 			if err != nil {
-				return files
+				return []File{}, nil
 			}
-
-			files = append(files, File{
-				FileSize: f.FileSize,
-				FileName: path.Base(f.FilePath),
-				f:        f,
-			})
-		}
-
-		if elt := u.Message.Document; elt != nil {
-			f, err := t.bot.GetFile(tgbotapi.FileConfig{
-				FileID: (*elt).FileID,
-			})
-			if err != nil {
-				return files
-			}
-
-			files = append(files, File{
-				FileSize: f.FileSize,
-				FileName: elt.FileName,
-				f:        f,
-			})
+			files = append(files, f)
 		}
 
 		if elt := u.Message.Voice; elt != nil {
-			f, err := t.bot.GetFile(tgbotapi.FileConfig{
-				FileID: (*elt).FileID,
-			})
+			f, err := fileGet(t, (*elt).FileID, "")
 			if err != nil {
-				return files
+				return []File{}, nil
 			}
+			files = append(files, f)
+		}
 
-			files = append(files, File{
-				FileSize: f.FileSize,
-				FileName: path.Base(f.FilePath),
-				f:        f,
-			})
+		if elt := u.Message.Document; elt != nil {
+			f, err := fileGet(t, elt.FileID, elt.FileName)
+			if err != nil {
+				return []File{}, nil
+			}
+			files = append(files, f)
+		}
+
+		if elt := u.Message.Video; elt != nil {
+			f, err := fileGet(t, elt.FileID, elt.FileName)
+			if err != nil {
+				return []File{}, nil
+			}
+			files = append(files, f)
+		}
+
+		if elt := u.Message.Audio; elt != nil {
+			f, err := fileGet(t, elt.FileID, elt.FileName)
+			if err != nil {
+				return []File{}, nil
+			}
+			files = append(files, f)
+		}
+
+		if elt := u.Message.Sticker; elt != nil {
+			f, err := fileGet(t, elt.FileID, elt.Emoji)
+			if err != nil {
+				return []File{}, nil
+			}
+			files = append(files, f)
 		}
 	}
 
-	return files
+	return files, nil
 }
 
 // TypeGet gets chain type
@@ -325,4 +325,26 @@ func callbackDataGen(state SessionState, identifier string) (string, error) {
 	}
 
 	return string(b), nil
+}
+
+// fileGet gets file by specified file ID from Telegram
+// If `fileName` is empty base part of file path will be used.
+func fileGet(t Telegram, fileID, fileName string) (File, error) {
+
+	f, err := t.bot.GetFile(tgbotapi.FileConfig{
+		FileID: fileID,
+	})
+	if err != nil {
+		return File{}, err
+	}
+
+	if fileName == "" {
+		fileName = path.Base(f.FilePath)
+	}
+
+	return File{
+		FileSize: f.FileSize,
+		FileName: fileName,
+		f:        f,
+	}, nil
 }
