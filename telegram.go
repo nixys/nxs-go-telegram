@@ -452,7 +452,6 @@ func (t *Telegram) DownloadFileStream(file File) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("request error: %v", err)
 	}
 
-	// Write body to file
 	if res.StatusCode == http.StatusOK {
 		return res.Body, nil
 	}
@@ -465,17 +464,17 @@ func (t *Telegram) DownloadFileStream(file File) (io.ReadCloser, error) {
 // DownloadFile downloads file from Telegram to specified path
 func (t *Telegram) DownloadFile(file File, dstPath string) error {
 
-	lf, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	defer lf.Close()
-
 	s, err := t.DownloadFileStream(file)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
+
+	lf, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer lf.Close()
 
 	if _, err := io.Copy(lf, s); err != nil {
 		return err
