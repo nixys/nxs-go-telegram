@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -757,9 +758,11 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 func buttonPrepare(text, identifier, mode string) tgbotapi.InlineKeyboardButton {
 	switch mode {
 	case "url":
-		return tgbotapi.NewInlineKeyboardButtonURL(text, identifier)
+		link := strings.Split(identifier, ":")
+		return tgbotapi.NewInlineKeyboardButtonURL(text, link[len(link)-1])
 	case "switch":
-		return tgbotapi.NewInlineKeyboardButtonSwitch(text, identifier)
+		link := strings.Split(identifier, ":")
+		return tgbotapi.NewInlineKeyboardButtonSwitch(text, link[len(link)-1])
 	}
 	return tgbotapi.NewInlineKeyboardButtonData(text, identifier)
 }
