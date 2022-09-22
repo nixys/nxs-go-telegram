@@ -216,6 +216,9 @@ type Button struct {
 
 	// Defines a button identifier for processing in handler
 	Identifier string
+
+	// Defines a button mode for processing in handler ("data" (default), "url", "switch")
+	Mode string
 }
 
 // File contains file descrition received from Telegram
@@ -424,8 +427,7 @@ func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageD
 				if err != nil {
 					return []MessageSent{}, err
 				}
-
-				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, d))
+				b = append(b, buttonPrepare(be.Text, d, be.Mode))
 			}
 			bm = append(bm, b)
 		}
@@ -741,7 +743,7 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 		for _, br := range file.Buttons {
 			var b []tgbotapi.InlineKeyboardButton
 			for _, be := range br {
-				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, be.Identifier))
+				b = append(b, buttonPrepare(be.Text, be.Identifier, be.Mode))
 			}
 			bm = append(bm, b)
 		}
@@ -749,4 +751,15 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 	}
 
 	return reader, ikm
+}
+
+//buttonPrepare prepare a button for inline keyboard markup
+func buttonPrepare(text, identifier, mode string) tgbotapi.InlineKeyboardButton {
+	switch mode {
+	case "url":
+		return tgbotapi.NewInlineKeyboardButtonURL(text, identifier)
+	case "switch":
+		return tgbotapi.NewInlineKeyboardButtonSwitch(text, identifier)
+	}
+	return tgbotapi.NewInlineKeyboardButtonData(text, identifier)
 }
