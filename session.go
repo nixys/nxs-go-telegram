@@ -12,11 +12,13 @@ type SessionState struct {
 
 // session it is a session context structure
 type Session struct {
-	chatID      int64
-	userID      int64
-	userName    string
-	updateChain *UpdateChain
-	redis       *redis
+	chatID        int64
+	userID        int64
+	userName      string
+	userFirstName string
+	userLastName  string
+	updateChain   *UpdateChain
+	redis         *redis
 }
 
 var (
@@ -81,6 +83,8 @@ func sessionInit(uc UpdateChain, redisHost string) (*Session, error) {
 
 	// Get user name from first update from chain
 	s.userName = updateUserNameGet(s.updateChain.updates[0])
+	s.userFirstName = updateFirstNameGet(s.updateChain.updates[0])
+	s.userLastName = updateLastNameGet(s.updateChain.updates[0])
 
 	s.redis, err = redisConnect(redisHost)
 	if err != nil {
@@ -108,6 +112,16 @@ func (s *Session) UserIDGet() int64 {
 // UserNameGet gets current session user name
 func (s *Session) UserNameGet() string {
 	return s.userName
+}
+
+// UserFirstNameGet gets current session user first name
+func (s *Session) UserFirstNameGet() string {
+	return s.userFirstName
+}
+
+// UserLastNameGet gets current session user last name
+func (s *Session) UserLastNameGet() string {
+	return s.userLastName
 }
 
 // UpdateChain gets update chain from session

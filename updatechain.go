@@ -312,6 +312,32 @@ func updateUserNameGet(update Update) string {
 	return ""
 }
 
+// updateFirstNameGet gets user name from specified update element
+func updateFirstNameGet(update Update) string {
+
+	switch updateTypeEltGet(update) {
+	case UpdateTypeMessage:
+		return update.Message.From.FirstName
+	case UpdateTypeCallback:
+		return update.CallbackQuery.From.FirstName
+	}
+
+	return ""
+}
+
+// updateLastNameGet gets user name from specified update element
+func updateLastNameGet(update Update) string {
+
+	switch updateTypeEltGet(update) {
+	case UpdateTypeMessage:
+		return update.Message.From.LastName
+	case UpdateTypeCallback:
+		return update.CallbackQuery.From.LastName
+	}
+
+	return ""
+}
+
 func callbackDataGen(state SessionState, identifier string) (string, error) {
 
 	d := callbackData{
