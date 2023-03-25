@@ -3,7 +3,6 @@ package tg
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 )
 
 type SessionState struct {
@@ -140,7 +139,7 @@ func (s *Session) SlotSave(slot string, data interface{}) error {
 	}
 
 	if e == false {
-		return fmt.Errorf("session does not exist")
+		return ErrSessionNotExist
 	}
 
 	// Encode data to bytes
@@ -162,7 +161,7 @@ func (s *Session) SlotGet(slot string, data interface{}) (bool, error) {
 	}
 
 	if e == false {
-		return false, fmt.Errorf("session does not exist")
+		return false, ErrSessionNotExist
 	}
 
 	ds, e := d.Slots[slot]
@@ -186,7 +185,7 @@ func (s *Session) SlotDel(slot string) error {
 	}
 
 	if e == false {
-		return fmt.Errorf("session does not exist")
+		return ErrSessionNotExist
 	}
 
 	delete(d.Slots, slot)

@@ -207,6 +207,9 @@ var (
 
 	// ErrUpdateWrongType contains error "update has wrong type"
 	ErrUpdateWrongType = errors.New("update has wrong type")
+
+	// ErrSessionNotExist contains error "session does not exist"
+	ErrSessionNotExist = errors.New("session does not exist")
 )
 
 // Button contains buttons data for state
@@ -754,7 +757,7 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 	return reader, ikm
 }
 
-//buttonPrepare prepare a button for inline keyboard markup
+// buttonPrepare prepare a button for inline keyboard markup
 func buttonPrepare(text, identifier, mode string) tgbotapi.InlineKeyboardButton {
 	switch mode {
 	case "url":
