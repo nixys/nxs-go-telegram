@@ -3,6 +3,7 @@ package tg
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -216,6 +217,9 @@ type Button struct {
 
 	// Defines a button identifier for processing in handler
 	Identifier string
+
+	// Defines a button mode for processing in handler ("data" (default), "url", "switch")
+	Mode string
 }
 
 // File contains file descrition received from Telegram
@@ -424,8 +428,7 @@ func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageD
 				if err != nil {
 					return []MessageSent{}, err
 				}
-
-				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, d))
+				b = append(b, buttonPrepare(be.Text, d, be.Mode))
 			}
 			bm = append(bm, b)
 		}
@@ -741,7 +744,7 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 		for _, br := range file.Buttons {
 			var b []tgbotapi.InlineKeyboardButton
 			for _, be := range br {
-				b = append(b, tgbotapi.NewInlineKeyboardButtonData(be.Text, be.Identifier))
+				b = append(b, buttonPrepare(be.Text, be.Identifier, be.Mode))
 			}
 			bm = append(bm, b)
 		}
@@ -749,4 +752,19 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 	}
 
 	return reader, ikm
+}
+
+//buttonPrepare prepare a button for inline keyboard markup
+func buttonPrepare(text, identifier, mode string) tgbotapi.InlineKeyboardButton {
+	switch mode {
+	case "url":
+		d := callbackData{}
+		json.Unmarshal([]byte(identifier), &d)
+		return tgbotapi.NewInlineKeyboardButtonURL(text, d.I)
+	case "switch":
+		d := callbackData{}
+		json.Unmarshal([]byte(identifier), &d)
+		return tgbotapi.NewInlineKeyboardButtonSwitch(text, d.I)
+	}
+	return tgbotapi.NewInlineKeyboardButtonData(text, identifier)
 }
