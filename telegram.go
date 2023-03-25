@@ -222,7 +222,7 @@ type Button struct {
 	Identifier string
 
 	// Defines a button mode for processing in handler ("data" (default), "url", "switch")
-	Mode string
+	Mode ButtonMode
 }
 
 // File contains file descrition received from Telegram
@@ -292,6 +292,19 @@ const (
 
 func (f FileType) String() string {
 	return [...]string{"document", "photo", "voice", "video", "audio", "sticker"}[f]
+}
+
+// ButtonMode it's a type of button mode (see https://core.telegram.org/bots/api#inlinekeyboardbutton for details)
+type ButtonMode int
+
+const (
+	ButtonModeData ButtonMode = iota
+	ButtonModeURL
+	ButtonModeSwitch
+)
+
+func (b ButtonMode) String() string {
+	return [...]string{"data", "url", "switch"}[b]
 }
 
 // Init initializes Telegram bot
@@ -758,13 +771,13 @@ func uploadStreamPrepare(file FileSendStream, r io.Reader) (tgbotapi.FileReader,
 }
 
 // buttonPrepare prepare a button for inline keyboard markup
-func buttonPrepare(text, identifier, mode string) tgbotapi.InlineKeyboardButton {
+func buttonPrepare(text, identifier string, mode ButtonMode) tgbotapi.InlineKeyboardButton {
 	switch mode {
-	case "url":
+	case ButtonModeURL:
 		d := callbackData{}
 		json.Unmarshal([]byte(identifier), &d)
 		return tgbotapi.NewInlineKeyboardButtonURL(text, d.I)
-	case "switch":
+	case ButtonModeSwitch:
 		d := callbackData{}
 		json.Unmarshal([]byte(identifier), &d)
 		return tgbotapi.NewInlineKeyboardButtonSwitch(text, d.I)
