@@ -466,9 +466,11 @@ func (s *Session) stateSwitch(t *Telegram, newState SessionState, messageID int)
 	if len(hr.Message) > 0 {
 
 		msgs, err := t.SendMessage(s.ChatIDGet(), mID, SendMessageData{
-			Message:     hr.Message,
-			Buttons:     hr.Buttons,
-			ButtonState: newState,
+			Message:               hr.Message,
+			ParseMode:             hr.ParseMode,
+			DisableWebPagePreview: hr.DisableWebPagePreview,
+			Buttons:               hr.Buttons,
+			ButtonState:           newState,
 		})
 		if err != nil {
 			return err

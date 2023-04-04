@@ -127,6 +127,13 @@ type StateHandlerRes struct {
 	// Message can not be zero length
 	Message string
 
+	// ParseMode defines a Telegram message Parse mode
+	ParseMode ParseMode
+
+	// DisableWebPagePreview defines whether or not
+	// disabling web page preview in messages
+	DisableWebPagePreview bool
+
 	// Buttons contains buttons for message to be sent to user.
 	// If Buttons has zero length message will not contains buttons
 	Buttons [][]Button
@@ -235,19 +242,21 @@ type File struct {
 
 // FileSendStream contains options for sending file to Telegram as stream
 type FileSendStream struct {
-	FileType FileType
-	FileName string
-	FileSize int64
-	Caption  string
-	Buttons  [][]Button
+	FileType  FileType
+	FileName  string
+	FileSize  int64
+	Caption   string
+	ParseMode ParseMode
+	Buttons   [][]Button
 }
 
 // FileSend contains options for sending file to Telegram
 type FileSend struct {
-	FileType FileType
-	FilePath string
-	Caption  string
-	Buttons  [][]Button
+	FileType  FileType
+	FilePath  string
+	Caption   string
+	ParseMode ParseMode
+	Buttons   [][]Button
 }
 
 // SendMessageData contains an options for message
@@ -255,6 +264,13 @@ type SendMessageData struct {
 
 	// Message defines a message text will sent to user
 	Message string
+
+	// ParseMode defines a Telegram message Parse mode
+	ParseMode ParseMode
+
+	// DisableWebPagePreview defines whether or not
+	// disabling web page preview in messages
+	DisableWebPagePreview bool
 
 	// Button defines buttons for message
 	Buttons [][]Button
@@ -305,6 +321,18 @@ const (
 
 func (b ButtonMode) String() string {
 	return [...]string{"data", "url", "switch"}[b]
+}
+
+type ParseMode int
+
+const (
+	ParseModeMarkdown ParseMode = iota
+	ParseModeMarkdownV2
+	ParseModeHTML
+)
+
+func (p ParseMode) String() string {
+	return [...]string{tgbotapi.ModeMarkdown, tgbotapi.ModeMarkdownV2, tgbotapi.ModeHTML}[p]
 }
 
 // Init initializes Telegram bot
@@ -454,7 +482,8 @@ func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageD
 
 	if messageID == 0 {
 		msg := tgbotapi.NewMessage(chatID, msgData.Message)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = msgData.ParseMode.String()
+		msg.DisableWebPagePreview = msgData.DisableWebPagePreview
 
 		if len(msgData.Buttons) > 0 {
 			msg.ReplyMarkup = ikm
@@ -463,7 +492,8 @@ func (t *Telegram) SendMessage(chatID int64, messageID int, msgData SendMessageD
 		mr, err = t.bot.Send(msg)
 	} else {
 		msg := tgbotapi.NewEditMessageText(chatID, messageID, msgData.Message)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = msgData.ParseMode.String()
+		msg.DisableWebPagePreview = msgData.DisableWebPagePreview
 
 		if len(msgData.Buttons) > 0 {
 			msg.ReplyMarkup = &ikm
@@ -539,7 +569,7 @@ func (t *Telegram) UploadFileStream(chatID int64, file FileSendStream, r io.Read
 	switch file.FileType {
 	case FileTypePhoto:
 		msg := tgbotapi.NewPhoto(chatID, reader)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = file.ParseMode.String()
 		msg.Caption = file.Caption
 
 		if len(file.Buttons) > 0 {
@@ -549,7 +579,7 @@ func (t *Telegram) UploadFileStream(chatID int64, file FileSendStream, r io.Read
 
 	case FileTypeVoice:
 		msg := tgbotapi.NewVoice(chatID, reader)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = file.ParseMode.String()
 		msg.Caption = file.Caption
 
 		if len(file.Buttons) > 0 {
@@ -559,7 +589,7 @@ func (t *Telegram) UploadFileStream(chatID int64, file FileSendStream, r io.Read
 
 	case FileTypeVideo:
 		msg := tgbotapi.NewVideo(chatID, reader)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = file.ParseMode.String()
 		msg.Caption = file.Caption
 
 		if len(file.Buttons) > 0 {
@@ -569,7 +599,7 @@ func (t *Telegram) UploadFileStream(chatID int64, file FileSendStream, r io.Read
 
 	case FileTypeAudio:
 		msg := tgbotapi.NewAudio(chatID, reader)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = file.ParseMode.String()
 		msg.Caption = file.Caption
 
 		if len(file.Buttons) > 0 {
@@ -588,7 +618,7 @@ func (t *Telegram) UploadFileStream(chatID int64, file FileSendStream, r io.Read
 	default: // including FileTypeDocument case
 		// For other examples see: https://github.com/go-telegram-bot-api/telegram-bot-api/blob/master/bot_test.go
 		msg := tgbotapi.NewDocument(chatID, reader)
-		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ParseMode = file.ParseMode.String()
 		msg.Caption = file.Caption
 
 		if len(file.Buttons) > 0 {
@@ -617,11 +647,12 @@ func (t *Telegram) UploadFile(chatID int64, file FileSend) (MessageSent, error) 
 	}
 
 	return t.UploadFileStream(chatID, FileSendStream{
-		FileType: file.FileType,
-		FileName: path.Base(file.FilePath),
-		FileSize: stat.Size(),
-		Caption:  file.Caption,
-		Buttons:  file.Buttons,
+		FileType:  file.FileType,
+		FileName:  path.Base(file.FilePath),
+		FileSize:  stat.Size(),
+		Caption:   file.Caption,
+		ParseMode: file.ParseMode,
+		Buttons:   file.Buttons,
 	}, f)
 }
 
