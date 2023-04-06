@@ -1,6 +1,6 @@
 # nxs-go-telegram
 
-`Nxs-go-telegram` based on [Go Telegram Bot API](github.com/go-telegram-bot-api/telegram-bot-api) and has built-in sessions allows you to develop complex bots. Your bot may use either `webhook` or `get update` modes.
+`Nxs-go-telegram` based on [Go Telegram Bot API](https://github.com/go-telegram-bot-api/telegram-bot-api) and has built-in sessions allows you to develop complex bots. Your bot may use either `webhook` or `get update` modes.
 
 The main idea of `nxs-go-telegram` based on a states and handlers. Each handler does some actions and returns (switches bot to) a new state. First user interaction with bot starts a session. During a session life cycle bot has a certain state.
 
