@@ -433,3 +433,13 @@ go mod init test
 go mod tidy
 BOT_API_TOKEN="YOUR_BOT_API_TOKEN" REDIS_HOST="YOUR_REDIS_HOST_AND_PORT" go run main.go
 ```
+
+## Feedback
+
+For support and feedbaсk please contact me:
+- telegram: [@borisershov](https://t.me/borisershov)
+- e-mail: b.ershov@nixys.ru
+
+## License
+
+nxs-go-telegram is released under the [MIT License](LICENSE).
