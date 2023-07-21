@@ -436,7 +436,7 @@ BOT_API_TOKEN="YOUR_BOT_API_TOKEN" REDIS_HOST="YOUR_REDIS_HOST_AND_PORT" go run 
 
 ## Feedback
 
-For support and feedbaсk please contact me:
+For support and feedback please contact me:
 - telegram: [@borisershov](https://t.me/borisershov)
 - e-mail: b.ershov@nixys.ru
 
