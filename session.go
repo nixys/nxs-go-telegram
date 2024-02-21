@@ -397,6 +397,17 @@ func (s *Session) stateCallbackProcessing(t *Telegram) error {
 		return nil
 	}
 
+	// Init session if it not exist
+	_, b, err = s.StateGet()
+	if err != nil {
+		return err
+	}
+	if b == false {
+		if err := s.stateSet(cbs); err != nil {
+			return err
+		}
+	}
+
 	r, err := state.CallbackHandler(t, s, identifier)
 	if err != nil {
 
