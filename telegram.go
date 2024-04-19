@@ -428,9 +428,9 @@ func (t *Telegram) UpdateAbsorb(update Update) error {
 	chatID, userID := updateIDsGet(update)
 
 	if update.CallbackQuery != nil {
-		if _, err := t.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "")); err != nil {
-			return err
-		}
+		// Do not check errors to prevent
+		// `query is too old and response timeout expired or query ID is invalid` error
+		t.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, ""))
 	}
 
 	if chatID == 0 || userID == 0 {
